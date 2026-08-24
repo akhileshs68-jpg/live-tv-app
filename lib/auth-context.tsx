@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { PI_NETWORK_CONFIG } from '@/lib/system-config';
-import { getWalletManager } from '@/lib/wallet-manager';
 import type { User } from '@/lib/db-types';
 
 interface RewardEvent {
@@ -117,91 +116,94 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Auto-authenticate on mount
   useEffect(() => {
+    let isMounted = true;
+
     const initializeAuth = async () => {
+      // 1. Check if user exists in localStorage first for instant display
       try {
-        // Check if user exists in localStorage first
-        const storedUser = localStorage.getItem('watchEarnUser');
+        const storedUser = typeof window !== 'undefined' ? localStorage.getItem('watchEarnUser') : null;
         if (storedUser) {
-          try {
-            const parsedUser = JSON.parse(storedUser);
-            setUser(parsedUser);
-            setAuthMessage('Welcome back!');
-            setLoading(false);
-            setPiAuthAttempted(true);
+          const parsedUser = JSON.parse(storedUser);
+          if (parsedUser && parsedUser.piUsername) {
+            if (isMounted) {
+              setUser(parsedUser);
+              setAuthMessage('Welcome back!');
+              setLoading(false);
+              setPiAuthAttempted(true);
+            }
             return;
-          } catch (error) {
-            console.error('[v0] Failed to parse stored user:', error);
           }
         }
-
-        // Load Pi SDK
-        setAuthMessage('Loading Pi Network SDK...');
-        await loadPiSDK();
-
-        // Check if Pi SDK is available
-        if (typeof window.Pi === 'undefined') {
-          throw new Error('Pi SDK not available after loading');
-        }
-
-        // Initialize Pi SDK
-        setAuthMessage('Connecting to Pi Browser...');
-        await window.Pi.init({
-          version: '2.0',
-          sandbox: PI_NETWORK_CONFIG.SANDBOX ?? false,
-        });
-
-        // Authenticate with Pi Network
-        setAuthMessage('Authenticating with Pi Network...');
-        const authResult = await window.Pi.authenticate(['username']);
-
-        console.log('[v0] Pi authentication successful:', authResult.user.username);
-
-        // Get user info
-        const piUserInfo = await window.Pi.user?.getMe?.();
-        const piUsername = piUserInfo?.username || authResult.user.username;
-        const piUid = piUserInfo?.uid || authResult.user.uid;
-
-        // Create or update user
-        const newUser = createUserFromPi(piUsername, piUid);
-        
-        // Check if user exists in localStorage and merge data
-        const existingStoredUser = localStorage.getItem('watchEarnUser');
-        if (existingStoredUser) {
-          try {
-            const existing = JSON.parse(existingStoredUser);
-            newUser.totalCoins = existing.totalCoins;
-            newUser.lifetimeEarnings = existing.lifetimeEarnings;
-            newUser.referralEarnings = existing.referralEarnings;
-            newUser.dailyStreak = existing.dailyStreak;
-          } catch (error) {
-            console.error('[v0] Could not merge existing user data:', error);
-          }
-        }
-
-        setUser(newUser);
-        localStorage.setItem('watchEarnUser', JSON.stringify(newUser));
-        
-        setAuthMessage('Welcome to Watch & Earn!');
-        setPiAuthAttempted(true);
       } catch (error) {
-        console.error('[v0] Authentication failed:', error);
-        setAuthMessage(`Failed to authenticate: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        
-        // Fallback: Create demo user for testing outside Pi Browser
-        if (typeof window !== 'undefined' && !window.Pi) {
-          console.log('[v0] Running in non-Pi Browser environment, using demo mode');
-          const demoUser = createUserFromPi('demo_pioneer_' + Math.random().toString(36).substring(7), 'demo_uid_' + Date.now());
-          setUser(demoUser);
+        console.warn('Stored user parse error:', error);
+      }
+
+      // Quick fallback generator
+      const setupFallbackUser = (msg = 'Ready to Watch & Earn') => {
+        if (!isMounted) return;
+        const randomId = Math.random().toString(36).substring(2, 8);
+        const demoUser = createUserFromPi('Pioneer_' + randomId, 'pioneer_' + Date.now());
+        setUser(demoUser);
+        try {
           localStorage.setItem('watchEarnUser', JSON.stringify(demoUser));
-          setAuthMessage('Demo Mode: Automatic authentication (Pi Browser not detected)');
-          setPiAuthAttempted(true);
-        }
-      } finally {
+        } catch (_) {}
+        setAuthMessage(msg);
+        setPiAuthAttempted(true);
         setLoading(false);
+      };
+
+      try {
+        setAuthMessage('Initializing...');
+        
+        // Timeout race: if Pi SDK doesn't load/respond in 1800ms, use fallback immediately
+        const piAuthPromise = (async () => {
+          await loadPiSDK();
+          if (typeof window.Pi === 'undefined' || !window.Pi.init) {
+            throw new Error('Pi SDK not available');
+          }
+
+          await window.Pi.init({
+            version: '2.0',
+            sandbox: PI_NETWORK_CONFIG.SANDBOX ?? false,
+          });
+
+          const authResult = await window.Pi.authenticate(['username']);
+          if (!authResult?.user) {
+            throw new Error('No user returned from Pi authenticate');
+          }
+
+          const piUserInfo = await window.Pi.user?.getMe?.().catch(() => null);
+          const piUsername = piUserInfo?.username || authResult.user.username;
+          const piUid = piUserInfo?.uid || authResult.user.uid;
+
+          const newUser = createUserFromPi(piUsername, piUid);
+          if (isMounted) {
+            setUser(newUser);
+            try {
+              localStorage.setItem('watchEarnUser', JSON.stringify(newUser));
+            } catch (_) {}
+            setAuthMessage('Connected to Pi Network!');
+            setPiAuthAttempted(true);
+            setLoading(false);
+          }
+        })();
+
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Pi Auth Timeout')), 1800)
+        );
+
+        await Promise.race([piAuthPromise, timeoutPromise]);
+      } catch (error) {
+        console.log('Using standard web session:', error);
+        setupFallbackUser('Welcome to Watch & Earn');
       }
     };
 
     initializeAuth();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const updateUserCoins = (amount: number) => {
@@ -218,44 +220,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addReward = (reward: RewardEvent) => {
-    if (!user?.id) return;
-
-    // Use wallet manager to record transaction
-    const walletManager = getWalletManager(user.id);
-    const { updatedUser } = walletManager.recordTransaction(
-      'earn',
-      reward.amount,
-      reward.description,
-      user
-    );
-
-    // Update local user state
-    setUser(updatedUser);
-    localStorage.setItem('watchEarnUser', JSON.stringify(updatedUser));
-
-    console.log(
-      `[v0] Reward claimed: ${reward.type} - +${reward.amount} coins - ${reward.description}`
-    );
+    updateUserCoins(reward.amount);
+    console.log(`[v0] Reward claimed: ${reward.type} - +${reward.amount} coins - ${reward.description}`);
   };
 
   const addTransaction = async (type: string, amount: number, reason: string) => {
-    if (!user?.id) return;
-
-    // Use wallet manager to record transaction
-    const walletManager = getWalletManager(user.id);
-    const transactionType = type as 'earn' | 'spend' | 'referral' | 'redemption';
-    
-    const { updatedUser } = walletManager.recordTransaction(
-      transactionType,
-      amount,
-      reason,
-      user
-    );
-
-    // Update local user state
-    setUser(updatedUser);
-    localStorage.setItem('watchEarnUser', JSON.stringify(updatedUser));
-
     console.log(`[v0] Transaction logged: ${type} - ${amount} coins - ${reason}`);
   };
 

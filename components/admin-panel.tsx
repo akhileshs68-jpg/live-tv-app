@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { AdminPaymentManager } from '@/components/admin-payment-manager';
 import {
   BarChart,
   Bar,
@@ -77,18 +76,12 @@ export function AdminPanel() {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="payments">Payments</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="fraud">Fraud Detection</TabsTrigger>
           <TabsTrigger value="moderation">Moderation</TabsTrigger>
         </TabsList>
-
-        {/* Payments Tab */}
-        <TabsContent value="payments" className="space-y-6">
-          <AdminPaymentManager />
-        </TabsContent>
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">

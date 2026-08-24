@@ -14,11 +14,16 @@ export async function GET() {
     // Fetch IPTV channels from M3U files
     for (const url of M3U_URLS) {
       try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 3000)
+
         const response = await fetch(url, {
           headers: {
             "User-Agent": "Mozilla/5.0",
           },
+          signal: controller.signal,
         })
+        clearTimeout(timeoutId)
 
         if (!response.ok) {
           console.log(`Failed to fetch from ${url}`)
@@ -29,7 +34,7 @@ export async function GET() {
         const channels = parseM3U(content)
         allChannels.push(...channels)
       } catch (error) {
-        console.error(`Error fetching ${url}:`, error)
+        console.warn(`IPTV external fetch skipped for ${url}`)
       }
     }
 

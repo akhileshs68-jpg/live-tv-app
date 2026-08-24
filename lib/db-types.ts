@@ -162,32 +162,3 @@ export interface AntiBotCheck {
   details: string;
   createdAt: string;
 }
-
-export interface PiPayment {
-  id: string;
-  userId: string;
-  amount: number;
-  memo: string;
-  status: 'pending' | 'approved' | 'completed' | 'failed' | 'cancelled' | 'rejected';
-  transactionId?: string;
-  walletAddress: string;
-  metadata?: Record<string, string | number>;
-  createdAt: string;
-  updatedAt: string;
-  approvedAt?: string;
-  approvedBy?: string;
-  rejectedAt?: string;
-  rejectedBy?: string;
-  rejectionReason?: string;
-  completedAt?: string;
-}
-
-export interface PaymentAuditLog {
-  id: string;
-  paymentId: string;
-  action: 'created' | 'approved' | 'rejected' | 'completed' | 'failed' | 'cancelled';
-  actor: 'system' | 'admin' | 'user';
-  actorId: string;
-  details: string;
-  timestamp: string;
-}

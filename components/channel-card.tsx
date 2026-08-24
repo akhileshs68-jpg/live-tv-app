@@ -22,51 +22,49 @@ export function ChannelCard({ channel, onPlay }: ChannelCardProps) {
   }
 
   return (
-    <Card className="overflow-hidden bg-card border-border/60 hover:border-primary/60 transition-all group cursor-pointer hover:shadow-lg hover:shadow-primary/10">
+    <Card 
+      className="overflow-hidden bg-card border-border hover:border-primary/50 transition-all group cursor-pointer"
+      onClick={() => onPlay(channel)}
+    >
       <div className="relative aspect-video bg-gradient-to-br from-secondary to-muted flex items-center justify-center overflow-hidden">
         {channel.logo ? (
           <img
-            src={channel.logo || "/placeholder.svg"}
+            src={channel.logo}
             alt={channel.name}
-            className="w-full h-full object-contain p-4 group-hover:scale-110 transition-transform duration-300"
+            className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
             onError={(e) => {
-              e.currentTarget.style.display = "none"
+              (e.currentTarget as HTMLElement).style.display = "none"
             }}
           />
         ) : (
-          <div className="text-5xl font-bold text-muted-foreground opacity-60">{channel.name.charAt(0)}</div>
+          <div className="text-4xl font-bold text-muted-foreground opacity-60">{channel.name.charAt(0)}</div>
         )}
-        
-        {/* Live Badge */}
-        {channel.isLive && (
-          <div className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded animate-pulse">
-            LIVE
-          </div>
-        )}
-        
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
           <Button
             size="lg"
-            className="rounded-full w-16 h-16 bg-primary hover:bg-primary/90 shadow-lg"
-            onClick={() => onPlay(channel)}
+            className="rounded-full w-14 h-14 bg-primary hover:bg-primary/90 shadow-lg"
+            onClick={(e) => {
+              e.stopPropagation()
+              onPlay(channel)
+            }}
           >
-            <Play className="w-8 h-8 fill-primary-foreground text-primary-foreground" />
+            <Play className="w-6 h-6 fill-primary-foreground text-primary-foreground ml-0.5" />
           </Button>
         </div>
         <div className="absolute top-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 bg-background/80 hover:bg-background"
+            className="h-8 w-8 bg-background/80 hover:bg-background"
             onClick={handleFavoriteClick}
             title={favorited ? "Remove from Favorites" : "Add to Favorites"}
           >
-            <Heart className={`w-4 h-4 ${favorited ? "fill-primary text-primary" : "text-muted-foreground"}`} />
+            <Heart className={`w-4 h-4 ${favorited ? "fill-red-500 text-red-500" : "text-muted-foreground"}`} />
           </Button>
         </div>
       </div>
-      <div className="p-4 space-y-3">
-        <h3 className="font-semibold text-sm leading-tight line-clamp-2 text-foreground">{channel.name}</h3>
+      <div className="p-3">
+        <h3 className="font-semibold text-sm leading-tight line-clamp-2 text-foreground mb-2">{channel.name}</h3>
         <div className="flex flex-wrap gap-1">
           {channel.globalCategory && (
             <Badge variant="default" className="text-xs bg-primary/90 hover:bg-primary">

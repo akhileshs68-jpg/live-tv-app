@@ -1,0 +1,6 @@
+{
+  "name": "Watch & Earn + Live TV",
+  "description": "Hybrid streaming and rewards platform combining Live TV streaming with integrated reward coins, tasks, leaderboard, and wallet.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

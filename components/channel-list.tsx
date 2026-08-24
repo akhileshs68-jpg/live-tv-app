@@ -58,7 +58,7 @@ export function ChannelList() {
       filtered = filtered.filter((c) => c.globalCategory === selectedCountry.name)
     }
 
-    filtered = filtered.filter((channel) => {
+    return filtered.filter((channel) => {
       const matchesSearch =
         channel.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         channel.category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -77,40 +77,7 @@ export function ChannelList() {
 
       return matchesSearch && matchesCategory && matchesFavorites
     })
-
-    // Sort: active channels first, then by name
-    return filtered.sort((a, b) => {
-      if (a.isLive === b.isLive) {
-        return a.name.localeCompare(b.name)
-      }
-      return a.isLive ? -1 : 1
-    })
   }, [channels, searchQuery, selectedCategory, showFavoritesOnly, favorites, viewMode, selectedCountry])
-
-  // Group channels by category
-  const groupedChannels = useMemo(() => {
-    const groups: Record<string, Channel[]> = {}
-    const categoryOrder = ["News", "Sports", "Movies", "Music", "Kids", "Devotional", "Regional", "Other"]
-    
-    filteredChannels.forEach((channel) => {
-      const category = channel.globalCategory || channel.category || "Other"
-      if (!groups[category]) {
-        groups[category] = []
-      }
-      groups[category].push(channel)
-    })
-
-    // Sort groups by category order
-    const sorted: Record<string, Channel[]> = {}
-    categoryOrder.forEach((cat) => {
-      if (groups[cat]) sorted[cat] = groups[cat]
-    })
-    Object.keys(groups).forEach((cat) => {
-      if (!sorted[cat]) sorted[cat] = groups[cat]
-    })
-
-    return sorted
-  }, [filteredChannels])
 
   if (loading) {
     return (
@@ -279,7 +246,7 @@ export function ChannelList() {
                 </div>
               ) : (
                 <>
-                  <div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-foreground">{filteredChannels.length} channels available</p>
                       <p className="text-xs text-muted-foreground mt-1">
@@ -292,26 +259,9 @@ export function ChannelList() {
                       </div>
                     )}
                   </div>
-
-                  {/* Grouped Channels View */}
-                  <div className="space-y-10">
-                    {Object.entries(groupedChannels).map(([category, categoryChannels]) => (
-                      <div key={category} className="space-y-3">
-                        <div className="sticky top-20 z-30 bg-background/95 backdrop-blur-sm -mx-4 px-4 py-2 border-b border-border/50">
-                          <div className="flex items-center gap-2">
-                            <div className="h-1 w-1 rounded-full bg-primary" />
-                            <h2 className="text-lg font-semibold text-foreground">{category}</h2>
-                            <span className="text-xs text-muted-foreground ml-auto">
-                              {categoryChannels.length}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                          {categoryChannels.map((channel) => (
-                            <ChannelCard key={channel.id} channel={channel} onPlay={setPlayingChannel} />
-                          ))}
-                        </div>
-                      </div>
+                  <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    {filteredChannels.map((channel) => (
+                      <ChannelCard key={channel.id} channel={channel} onPlay={setPlayingChannel} />
                     ))}
                   </div>
                 </>

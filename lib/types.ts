@@ -8,6 +8,9 @@ export interface Channel {
   language: string
   isLive: boolean
   globalCategory?: string
+  youtubeId?: string
+  streamType?: "hls" | "youtube" | "mp4"
+  backupUrl?: string
 }
 
 export interface M3UPlaylist {

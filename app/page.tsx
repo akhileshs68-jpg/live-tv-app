@@ -7,15 +7,11 @@ import { ChannelList } from '@/components/channel-list';
 import { RewardOverlay } from '@/components/reward-overlay';
 
 export default function Home() {
-  const { isAuthenticated, loading } = useAuth();
-
-  // Show loading screen during Pi authentication
-  if (loading || !isAuthenticated) {
-    return <AuthLoadingScreen />;
-  }
+  const { loading, user } = useAuth();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-foreground relative">
+      {loading && !user && <AuthLoadingScreen />}
       <RewardOverlay />
       <ChannelList />
     </div>
