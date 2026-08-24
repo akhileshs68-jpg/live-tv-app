@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { PI_NETWORK_CONFIG } from '@/lib/system-config';
+import { getWalletManager } from '@/lib/wallet-manager';
 import type { User } from '@/lib/db-types';
 
 interface RewardEvent {
@@ -217,11 +218,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addReward = (reward: RewardEvent) => {
-    updateUserCoins(reward.amount);
-    console.log(`[v0] Reward claimed: ${reward.type} - +${reward.amount} coins - ${reward.description}`);
+    if (!user?.id) return;
+
+    // Use wallet manager to record transaction
+    const walletManager = getWalletManager(user.id);
+    const { updatedUser } = walletManager.recordTransaction(
+      'earn',
+      reward.amount,
+      reward.description,
+      user
+    );
+
+    // Update local user state
+    setUser(updatedUser);
+    localStorage.setItem('watchEarnUser', JSON.stringify(updatedUser));
+
+    console.log(
+      `[v0] Reward claimed: ${reward.type} - +${reward.amount} coins - ${reward.description}`
+    );
   };
 
   const addTransaction = async (type: string, amount: number, reason: string) => {
+    if (!user?.id) return;
+
+    // Use wallet manager to record transaction
+    const walletManager = getWalletManager(user.id);
+    const transactionType = type as 'earn' | 'spend' | 'referral' | 'redemption';
+    
+    const { updatedUser } = walletManager.recordTransaction(
+      transactionType,
+      amount,
+      reason,
+      user
+    );
+
+    // Update local user state
+    setUser(updatedUser);
+    localStorage.setItem('watchEarnUser', JSON.stringify(updatedUser));
+
     console.log(`[v0] Transaction logged: ${type} - ${amount} coins - ${reason}`);
   };
 

@@ -22,7 +22,7 @@ export function ChannelCard({ channel, onPlay }: ChannelCardProps) {
   }
 
   return (
-    <Card className="overflow-hidden bg-card border-border hover:border-primary/50 transition-all group cursor-pointer">
+    <Card className="overflow-hidden bg-card border-border/60 hover:border-primary/60 transition-all group cursor-pointer hover:shadow-lg hover:shadow-primary/10">
       <div className="relative aspect-video bg-gradient-to-br from-secondary to-muted flex items-center justify-center overflow-hidden">
         {channel.logo ? (
           <img
@@ -36,6 +36,14 @@ export function ChannelCard({ channel, onPlay }: ChannelCardProps) {
         ) : (
           <div className="text-5xl font-bold text-muted-foreground opacity-60">{channel.name.charAt(0)}</div>
         )}
+        
+        {/* Live Badge */}
+        {channel.isLive && (
+          <div className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded animate-pulse">
+            LIVE
+          </div>
+        )}
+        
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
           <Button
             size="lg"
@@ -57,8 +65,8 @@ export function ChannelCard({ channel, onPlay }: ChannelCardProps) {
           </Button>
         </div>
       </div>
-      <div className="p-3">
-        <h3 className="font-semibold text-sm leading-tight line-clamp-2 text-foreground mb-2">{channel.name}</h3>
+      <div className="p-4 space-y-3">
+        <h3 className="font-semibold text-sm leading-tight line-clamp-2 text-foreground">{channel.name}</h3>
         <div className="flex flex-wrap gap-1">
           {channel.globalCategory && (
             <Badge variant="default" className="text-xs bg-primary/90 hover:bg-primary">
