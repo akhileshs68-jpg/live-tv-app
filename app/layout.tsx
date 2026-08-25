@@ -10,8 +10,6 @@ export const metadata: Metadata = {
   title: "Watch & Earn - Reward Coins Platform",
   description: "Earn reward coins by watching videos, completing tasks, and referrals. Secure wallet with real-time tracking and leaderboard competition.",
   keywords: "earn coins, rewards, watch videos, crypto rewards, gamification",
-  viewport: "width=device-width, initial-scale=1",
-    generator: 'v0.app'
 };
 
 export const viewport: Viewport = {
@@ -28,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="bg-background">
+    <html lang="en" className="dark bg-background" suppressHydrationWarning>
       <head>
         <style>{`
 html {

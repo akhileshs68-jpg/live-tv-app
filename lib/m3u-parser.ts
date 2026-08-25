@@ -1,7 +1,24 @@
 import type { Channel } from "./types"
 
+function simpleHash(str: string): string {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i)
+    hash |= 0
+  }
+  return Math.abs(hash).toString(36)
+}
+
+function generateDeterministicId(name: string, url: string): string {
+  const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, "_").slice(0, 30)
+  const urlHash = simpleHash(url)
+  return `ch_${cleanName}_${urlHash}`
+}
+
 export function parseM3U(content: string): Channel[] {
-  const lines = content.split("\n")
+  if (!content || typeof content !== "string") return []
+
+  const lines = content.split(/\r?\n/)
   const channels: Channel[] = []
   let currentChannel: Partial<Channel> = {}
 
@@ -9,30 +26,44 @@ export function parseM3U(content: string): Channel[] {
     const line = lines[i].trim()
 
     if (line.startsWith("#EXTINF:")) {
-      // Parse channel info
+      // Parse channel metadata attributes
       const nameMatch = line.match(/,(.+)$/)
       const logoMatch = line.match(/tvg-logo="([^"]+)"/)
       const categoryMatch = line.match(/group-title="([^"]+)"/)
       const countryMatch = line.match(/tvg-country="([^"]+)"/)
       const langMatch = line.match(/tvg-language="([^"]+)"/)
 
-      const category = categoryMatch ? categoryMatch[1] : "General"
-      
+      const name = nameMatch ? nameMatch[1].trim() : "Live Channel"
+      const category = categoryMatch ? categoryMatch[1].trim() : "General"
+      const logo = logoMatch && (logoMatch[1].startsWith("http://") || logoMatch[1].startsWith("https://")) 
+        ? logoMatch[1] 
+        : ""
+
       currentChannel = {
-        name: nameMatch ? nameMatch[1].trim() : "Unknown Channel",
-        logo: logoMatch ? logoMatch[1] : "",
-        category: category,
-        country: countryMatch ? countryMatch[1] : "",
-        language: langMatch ? langMatch[1] : "",
+        name,
+        logo,
+        category,
+        country: countryMatch ? countryMatch[1].trim() : "",
+        language: langMatch ? langMatch[1].trim() : "",
         isLive: true,
-        globalCategory: categorizeChannel(category, nameMatch ? nameMatch[1].trim() : ""),
+        globalCategory: categorizeChannel(category, name),
       }
-    } else if (line && !line.startsWith("#") && currentChannel.name) {
-      // This is the stream URL
-      currentChannel.url = line
-      currentChannel.id = `${currentChannel.name}-${Date.now()}-${Math.random()}`
-      channels.push(currentChannel as Channel)
-      currentChannel = {}
+    } else if (line && !line.startsWith("#")) {
+      // Validate stream URL protocol
+      const isValidUrl = line.startsWith("http://") || line.startsWith("https://") || line.startsWith("rtmp://")
+      
+      if (isValidUrl && currentChannel.name) {
+        const streamUrl = line
+        const channelId = generateDeterministicId(currentChannel.name, streamUrl)
+
+        channels.push({
+          ...(currentChannel as Omit<Channel, "id" | "url">),
+          id: channelId,
+          url: streamUrl,
+        } as Channel)
+
+        currentChannel = {}
+      }
     }
   }
 
@@ -40,8 +71,8 @@ export function parseM3U(content: string): Channel[] {
 }
 
 function categorizeChannel(category: string, name: string): string {
-  const lowerCategory = category.toLowerCase()
-  const lowerName = name.toLowerCase()
+  const lowerCategory = (category || "").toLowerCase()
+  const lowerName = (name || "").toLowerCase()
 
   if (lowerCategory.includes("news") || lowerName.includes("news")) return "News"
   if (lowerCategory.includes("sports") || lowerName.includes("sports") || lowerName.includes("cricket")) return "Sports"
@@ -52,11 +83,12 @@ function categorizeChannel(category: string, name: string): string {
     lowerName.includes("entertainment")
   )
     return "Entertainment"
-  if (lowerCategory.includes("india")) return "India"
+  if (lowerCategory.includes("india") || lowerName.includes("india")) return "India"
   return "Global"
 }
 
 export function filterIndianChannels(channels: Channel[]): Channel[] {
+  if (!Array.isArray(channels)) return []
   return channels.filter(
     (channel) =>
       channel.country?.toUpperCase().includes("IN") ||
@@ -67,6 +99,6 @@ export function filterIndianChannels(channels: Channel[]): Channel[] {
       channel.language?.toLowerCase().includes("kannada") ||
       channel.language?.toLowerCase().includes("bengali") ||
       channel.name?.toLowerCase().includes("india") ||
-      channel.category?.toLowerCase().includes("india"),
+      channel.category?.toLowerCase().includes("india")
   )
 }

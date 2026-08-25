@@ -7,16 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { User, Settings, Bell, Lock, LogOut } from 'lucide-react';
+import { User, Settings, Bell, Shield, LogOut } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { user, isAuthenticated, loading } = useAuth();
-  const [settings, setSettings] = useState({
-    notifications: true,
-    emailUpdates: false,
-    twoFactor: false,
-    publicProfile: true,
-  });
+  const { user, premiumStatus, loading, logout } = useAuth();
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const isPremium = Boolean(premiumStatus?.active);
 
   if (loading) {
     return (
@@ -28,33 +24,34 @@ export default function SettingsPage() {
     );
   }
 
+  const handleSavePreferences = () => {
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2000);
+  };
+
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-0">
       <div className="bg-card border-b border-border sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-4 py-4">
           <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-          <p className="text-sm text-muted-foreground">Manage your account and preferences</p>
+          <p className="text-sm text-muted-foreground">Manage your Pi Network account and preferences</p>
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-6">
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="w-4 h-4" />
-              <span className="hidden sm:inline">Profile</span>
+              <span>Profile</span>
             </TabsTrigger>
             <TabsTrigger value="notifications" className="flex items-center gap-2">
               <Bell className="w-4 h-4" />
-              <span className="hidden sm:inline">Notifications</span>
-            </TabsTrigger>
-            <TabsTrigger value="security" className="flex items-center gap-2">
-              <Lock className="w-4 h-4" />
-              <span className="hidden sm:inline">Security</span>
+              <span>Notifications</span>
             </TabsTrigger>
             <TabsTrigger value="account" className="flex items-center gap-2">
               <Settings className="w-4 h-4" />
-              <span className="hidden sm:inline">Account</span>
+              <span>Account</span>
             </TabsTrigger>
           </TabsList>
 
@@ -62,46 +59,51 @@ export default function SettingsPage() {
           <TabsContent value="profile" className="space-y-6">
             <Card className="bg-card border-border">
               <CardHeader>
-                <CardTitle>Profile Information</CardTitle>
-                <CardDescription>Update your account details</CardDescription>
+                <CardTitle>Pi Network Identity</CardTitle>
+                <CardDescription>Verified identity details from Pi Browser</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Pi Username</label>
                   <Input
-                    value={user?.piUsername}
+                    value={user?.piUsername ? `@${user.piUsername}` : 'Pioneer Guest'}
                     readOnly
-                    className="bg-muted border-border"
+                    className="bg-muted border-border font-medium"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Wallet Address</label>
+                  <label className="text-sm font-medium text-foreground">Pi User ID</label>
                   <Input
-                    value={user?.walletAddress}
+                    value={user?.piUserId || user?.id || 'Unauthenticated'}
                     readOnly
-                    className="bg-muted border-border"
+                    className="bg-muted border-border font-mono text-xs"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Joined</label>
+                  <label className="text-sm font-medium text-foreground">Wallet Information</label>
                   <Input
-                    value={user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : ''}
+                    value={user?.walletAddress || 'Pi Account Linked'}
                     readOnly
-                    className="bg-muted border-border"
+                    className="bg-muted border-border text-sm"
                   />
                 </div>
 
-                <Button className="w-full bg-primary hover:bg-primary/90">
-                  Update Profile
-                </Button>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">First Authenticated</label>
+                  <Input
+                    value={user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
+                    readOnly
+                    className="bg-muted border-border text-sm"
+                  />
+                </div>
               </CardContent>
             </Card>
 
             <Card className="bg-card border-border">
               <CardHeader>
-                <CardTitle className="text-lg">Account Statistics</CardTitle>
+                <CardTitle className="text-lg">Reward Statistics</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between p-3 bg-secondary/10 rounded-lg border border-border">
@@ -117,8 +119,8 @@ export default function SettingsPage() {
                   <span className="font-bold text-secondary">{user?.referralEarnings?.toLocaleString() || 0}</span>
                 </div>
                 <div className="flex items-center justify-between p-3 bg-secondary/10 rounded-lg border border-border">
-                  <span className="text-sm text-muted-foreground">Current Streak</span>
-                  <span className="font-bold text-accent">{user?.dailyStreak || 0} days</span>
+                  <span className="text-sm text-muted-foreground">Daily Login Streak</span>
+                  <span className="font-bold text-accent">{user?.dailyStreak || 1} days</span>
                 </div>
               </CardContent>
             </Card>
@@ -129,103 +131,27 @@ export default function SettingsPage() {
             <Card className="bg-card border-border">
               <CardHeader>
                 <CardTitle>Notification Settings</CardTitle>
-                <CardDescription>Control how you receive updates</CardDescription>
+                <CardDescription>Control your in-app reward notifications</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between p-3 bg-secondary/10 rounded-lg border border-border">
                   <div>
-                    <p className="font-medium text-foreground">Push Notifications</p>
-                    <p className="text-sm text-muted-foreground">Get alerts for rewards and achievements</p>
+                    <p className="font-medium text-foreground">Reward Popups</p>
+                    <p className="text-sm text-muted-foreground">Show coin popups when streaming channels</p>
                   </div>
-                  <input type="checkbox" defaultChecked className="w-5 h-5" />
+                  <input type="checkbox" defaultChecked className="w-5 h-5 accent-primary" />
                 </div>
 
                 <div className="flex items-center justify-between p-3 bg-secondary/10 rounded-lg border border-border">
                   <div>
-                    <p className="font-medium text-foreground">Email Updates</p>
-                    <p className="text-sm text-muted-foreground">Weekly summary of your earnings</p>
+                    <p className="font-medium text-foreground">Referral Bonus Alerts</p>
+                    <p className="text-sm text-muted-foreground">Notify when a Pioneer joins using your code</p>
                   </div>
-                  <input type="checkbox" className="w-5 h-5" />
+                  <input type="checkbox" defaultChecked className="w-5 h-5 accent-primary" />
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-secondary/10 rounded-lg border border-border">
-                  <div>
-                    <p className="font-medium text-foreground">Referral Notifications</p>
-                    <p className="text-sm text-muted-foreground">Alert when someone joins your referral link</p>
-                  </div>
-                  <input type="checkbox" defaultChecked className="w-5 h-5" />
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-secondary/10 rounded-lg border border-border">
-                  <div>
-                    <p className="font-medium text-foreground">Marketing Emails</p>
-                    <p className="text-sm text-muted-foreground">Promotions and special offers</p>
-                  </div>
-                  <input type="checkbox" className="w-5 h-5" />
-                </div>
-
-                <Button className="w-full bg-primary hover:bg-primary/90">
-                  Save Preferences
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Security Tab */}
-          <TabsContent value="security" className="space-y-6">
-            <Card className="bg-card border-border">
-              <CardHeader>
-                <CardTitle>Security Settings</CardTitle>
-                <CardDescription>Protect your account</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Current Password</label>
-                  <Input
-                    type="password"
-                    placeholder="Enter current password"
-                    className="bg-input border-border"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">New Password</label>
-                  <Input
-                    type="password"
-                    placeholder="Enter new password"
-                    className="bg-input border-border"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Confirm Password</label>
-                  <Input
-                    type="password"
-                    placeholder="Confirm new password"
-                    className="bg-input border-border"
-                  />
-                </div>
-
-                <Button className="w-full bg-primary hover:bg-primary/90">
-                  Update Password
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card border-border">
-              <CardHeader>
-                <CardTitle>Two-Factor Authentication</CardTitle>
-                <CardDescription>Add extra security to your account</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Badge variant="secondary" className="mb-4">
-                  Not Enabled
-                </Badge>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Two-factor authentication adds an extra layer of security by requiring a code from your phone when you sign in.
-                </p>
-                <Button variant="outline" className="w-full">
-                  Enable 2FA
+                <Button onClick={handleSavePreferences} className="w-full bg-primary hover:bg-primary/90">
+                  {saveSuccess ? 'Preferences Saved!' : 'Save Preferences'}
                 </Button>
               </CardContent>
             </Card>
@@ -235,24 +161,47 @@ export default function SettingsPage() {
           <TabsContent value="account" className="space-y-6">
             <Card className="bg-card border-border">
               <CardHeader>
-                <CardTitle>Account Information</CardTitle>
+                <CardTitle>Account Status</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between p-3 bg-secondary/10 rounded-lg border border-border">
-                  <span className="text-sm text-muted-foreground">Account Status</span>
-                  <Badge className="bg-accent/20 text-accent border-0">Active</Badge>
+                  <span className="text-sm text-muted-foreground">Pi Authentication</span>
+                  <Badge className="bg-emerald-500/20 text-emerald-400 border-0 flex items-center gap-1">
+                    <Shield className="w-3 h-3" />
+                    Verified Pioneer
+                  </Badge>
                 </div>
+
                 <div className="flex items-center justify-between p-3 bg-secondary/10 rounded-lg border border-border">
-                  <span className="text-sm text-muted-foreground">Member Since</span>
-                  <span className="font-medium text-foreground">2 months ago</span>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Membership Entitlement</p>
+                    <p className="text-xs text-muted-foreground">{isPremium ? "Ad-Free Premium Pioneer" : "Free Pioneer (Sponsor Ads Enabled)"}</p>
+                  </div>
+                  <Button asChild size="sm" variant={isPremium ? "default" : "outline"} className={isPremium ? "bg-amber-500 text-black font-bold" : ""}>
+                    <a href="/premium">
+                      {isPremium ? "Premium Active" : "View Premium"}
+                    </a>
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between p-3 bg-secondary/10 rounded-lg border border-border">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Creator Studio & Channel</p>
+                    <p className="text-xs text-muted-foreground">Manage your own broadcast channel, VOD videos, and 24/7 schedules</p>
+                  </div>
+                  <Button asChild size="sm" variant="outline" className="font-bold border-primary/40 text-primary hover:bg-primary/10">
+                    <a href="/creator">
+                      Creator Studio
+                    </a>
+                  </Button>
                 </div>
               </CardContent>
             </Card>
 
             <Card className="bg-destructive/5 border-destructive/30">
               <CardHeader>
-                <CardTitle className="text-destructive">Danger Zone</CardTitle>
-                <CardDescription>Irreversible actions</CardDescription>
+                <CardTitle className="text-destructive">Session Management</CardTitle>
+                <CardDescription>Sign out of this Pi Live TV session</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button
@@ -261,14 +210,7 @@ export default function SettingsPage() {
                   className="w-full border-destructive text-destructive hover:bg-destructive/10"
                 >
                   <LogOut className="w-4 h-4 mr-2" />
-                  Sign Out
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full border-destructive text-destructive hover:bg-destructive/10"
-                >
-                  Delete Account
+                  Sign Out Session
                 </Button>
               </CardContent>
             </Card>

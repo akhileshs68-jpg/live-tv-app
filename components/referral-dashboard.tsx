@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 export function ReferralDashboard() {
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
-  const copyTimeoutRef = useRef<NodeJS.Timeout>();
+  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   if (!user) return null;
 

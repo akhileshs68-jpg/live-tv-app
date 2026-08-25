@@ -1,45 +1,79 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import type { User } from '@/lib/db-types';
 import { formatCoins } from '@/lib/reward-utils';
 import { Badge } from '@/components/ui/badge';
+import { User as UserIcon, Crown } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
 
 export function DashboardHeader({ user }: { user: User | null }) {
+  const { premiumStatus } = useAuth();
+  const isPremium = Boolean(premiumStatus?.active);
+
   return (
-    <header className="bg-card border-b border-border sticky top-0 z-30">
-      <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-lg font-bold">
-            💎
+    <header className="bg-card/95 backdrop-blur-md border-b border-border sticky top-0 z-30 pt-[env(safe-area-inset-top,0px)] shadow-sm">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2.5 flex items-center justify-between">
+        {/* Brand logo & Title */}
+        <Link href="/" className="flex items-center gap-2.5">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-extrabold text-base shadow">
+            π
           </div>
-          <div className="hidden sm:block">
-            <h1 className="text-xl font-bold text-foreground">Watch & Earn</h1>
-            <p className="text-xs text-muted-foreground">Live TV • Earn Coins</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 sm:gap-4">
-          {/* Coin Balance */}
-          <div className="flex items-center gap-2 bg-secondary/50 rounded-lg px-3 py-2 border border-border">
-            <span className="text-lg">💰</span>
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Balance</p>
-              <p className="font-bold text-foreground">{formatCoins(user?.totalCoins || 0)}</p>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-base sm:text-lg font-bold tracking-tight text-foreground leading-none">
+                Pi Live TV
+              </h1>
+              <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider bg-red-600/90 text-white px-1.5 py-0.5 rounded-full animate-pulse">
+                <span className="w-1 h-1 rounded-full bg-white" />
+                LIVE
+              </span>
             </div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground hidden sm:block">
+              Streaming & Rewards Platform
+            </p>
           </div>
+        </Link>
 
-          {/* User Info */}
-          <div className="hidden md:block text-right px-3 py-2">
-            <p className="text-sm text-muted-foreground">Pioneer</p>
-            <p className="font-semibold text-foreground">{user?.piUsername}</p>
-          </div>
+        {/* Balance, Premium Badge & User Account */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Watch Points Balance */}
+          <Link href="/earn" className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 hover:border-amber-500/40 rounded-lg px-2.5 py-1.5 shadow-xs transition-colors">
+            <span className="text-sm">⭐</span>
+            <div className="text-right">
+              <p className="text-[9px] uppercase tracking-wider text-amber-500 font-bold leading-none">Watch Points</p>
+              <p className="text-xs sm:text-sm font-bold text-foreground leading-tight">{formatCoins(user?.totalCoins || 0)}</p>
+            </div>
+          </Link>
 
-          {/* Earning Status Badge */}
-          <Badge className="bg-green-500/20 text-green-700 border-green-500/30">
-            <span className="w-2 h-2 bg-green-500 rounded-full mr-1" />
-            Earning Active
-          </Badge>
+          {/* Premium Status Badge */}
+          <Link href="/premium" title="Membership Entitlement">
+            {isPremium ? (
+              <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 hover:bg-amber-500/30 transition-colors text-[10px] sm:text-xs py-1 flex items-center gap-1 font-bold">
+                <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
+                PRO
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px] sm:text-xs py-1 text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors font-medium">
+                FREE
+              </Badge>
+            )}
+          </Link>
+
+          {/* User Profile Quick Link */}
+          <Link
+            href="/settings"
+            className="flex items-center gap-2 bg-muted/60 hover:bg-muted p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg border border-border/80 transition-colors"
+            title="Account Settings"
+          >
+            <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-semibold">
+              <UserIcon className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-xs font-semibold text-foreground hidden md:inline truncate max-w-[100px]">
+              {user?.piUsername ? `@${user.piUsername}` : 'Pioneer'}
+            </span>
+          </Link>
         </div>
       </div>
     </header>

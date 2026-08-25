@@ -111,17 +111,22 @@ export function parseReferralCode(url: string): string | null {
 
 // Store referral stats in localStorage
 export function saveReferralStats(userId: string, stats: ReferralStats): void {
-  const key = `referral_stats_${userId}`;
-  localStorage.setItem(key, JSON.stringify(stats));
+  if (typeof window === 'undefined') return;
+  try {
+    const key = `referral_stats_${userId}`;
+    localStorage.setItem(key, JSON.stringify(stats));
+  } catch (e) {
+    console.warn('Failed to save referral stats:', e);
+  }
 }
 
 // Load referral stats from localStorage
 export function loadReferralStats(userId: string): ReferralStats | null {
-  const key = `referral_stats_${userId}`;
-  const data = localStorage.getItem(key);
-  if (!data) return null;
-  
+  if (typeof window === 'undefined') return null;
   try {
+    const key = `referral_stats_${userId}`;
+    const data = localStorage.getItem(key);
+    if (!data) return null;
     return JSON.parse(data);
   } catch {
     return null;
@@ -130,9 +135,14 @@ export function loadReferralStats(userId: string): ReferralStats | null {
 
 // Track referral click
 export function trackReferralClick(code: string): void {
-  const key = `referral_clicks_${code}`;
-  const clicks = parseInt(localStorage.getItem(key) || '0') + 1;
-  localStorage.setItem(key, clicks.toString());
+  if (typeof window === 'undefined') return;
+  try {
+    const key = `referral_clicks_${code}`;
+    const clicks = parseInt(localStorage.getItem(key) || '0') + 1;
+    localStorage.setItem(key, clicks.toString());
+  } catch (e) {
+    console.warn('Failed to track referral click:', e);
+  }
 }
 
 // Create shareable message templates

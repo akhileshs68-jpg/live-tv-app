@@ -139,7 +139,22 @@
   }
   body {
     @apply bg-background text-foreground;
+    min-height: 100dvh;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    -webkit-tap-highlight-color: transparent;
   }
+}
+
+/* Scrollbar hide utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
 }
 
 /* Fullscreen video player styles */
@@ -164,30 +179,42 @@ video::-webkit-media-controls-current-time-display {
   color: white;
 }
 
-/* Firefox fullscreen video */
-video:-moz-full-screen {
-  width: 100%;
-  height: 100%;
+/* Fullscreen player container overrides */
+:fullscreen,
+:-webkit-full-screen,
+:-moz-full-screen,
+:-ms-fullscreen {
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background-color: #000000 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
 }
 
-/* Standard fullscreen */
-video:fullscreen {
-  width: 100%;
-  height: 100%;
+:fullscreen video,
+:-webkit-full-screen video,
+:-moz-full-screen video,
+:-ms-fullscreen video {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-position: center center !important;
 }
 
-/* Webkit fullscreen */
-video:-webkit-full-screen {
-  width: 100%;
-  height: 100%;
+:fullscreen iframe,
+:-webkit-full-screen iframe,
+:-moz-full-screen iframe,
+:-ms-fullscreen iframe {
+  width: 100% !important;
+  height: 100% !important;
 }
 
-/* Mobile orientation lock */
-@media (max-width: 768px) {
-  html.fullscreen-mode {
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-  }
-}

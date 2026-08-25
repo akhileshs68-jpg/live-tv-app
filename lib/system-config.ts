@@ -7,8 +7,8 @@
           // Pi Network Configuration
           export const PI_NETWORK_CONFIG = {
             SDK_URL: "https://sdk.minepi.com/pi-sdk.js",
-            SANDBOX: false,
-          } as const;
+            SANDBOX: process.env.NEXT_PUBLIC_PI_SANDBOX === "true",
+          };
 
           // Backend Configuration
           export const BACKEND_CONFIG = {

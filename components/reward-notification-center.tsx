@@ -22,20 +22,20 @@ export function RewardNotificationCenter() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || typeof window === 'undefined') return;
 
     // Load notifications from storage
-    const stored = localStorage.getItem(`notifications_${user.id}`);
-    if (stored) {
-      try {
+    try {
+      const stored = localStorage.getItem(`notifications_${user.id}`);
+      if (stored) {
         const data = JSON.parse(stored);
         // Only show notifications from last 30 seconds
         const recent = data.filter((n: Notification) => Date.now() - n.timestamp < 30000);
         setNotifications(recent);
         setVisible(recent.length > 0);
-      } catch (e) {
-        console.log('[v0] Failed to load notifications');
       }
+    } catch (e) {
+      console.warn('Failed to load notifications');
     }
   }, [user]);
 
@@ -49,8 +49,12 @@ export function RewardNotificationCenter() {
     setNotifications((prev) => [newNotif, ...prev.slice(0, 4)]);
     setVisible(true);
 
-    if (user) {
-      localStorage.setItem(`notifications_${user.id}`, JSON.stringify([newNotif]));
+    if (user && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`notifications_${user.id}`, JSON.stringify([newNotif]));
+      } catch (e) {
+        console.warn('Failed to save notification');
+      }
     }
 
     // Auto-hide after 5 seconds

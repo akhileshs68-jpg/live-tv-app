@@ -51,16 +51,18 @@ export class EarningManager {
 
   private loadSession(): EarningSession {
     const today = new Date().toISOString().split('T')[0];
-    const saved = localStorage.getItem(`earning_session_${this.userId}_${today}`);
     
-    if (saved) {
+    if (typeof window !== 'undefined') {
       try {
-        const session = JSON.parse(saved);
-        if (session.date === today) {
-          return session;
+        const saved = localStorage.getItem(`earning_session_${this.userId}_${today}`);
+        if (saved) {
+          const session = JSON.parse(saved);
+          if (session.date === today) {
+            return session;
+          }
         }
       } catch (e) {
-        console.log('[v0] Session load failed, creating new');
+        console.warn('Session load failed, creating new');
       }
     }
 
@@ -76,8 +78,13 @@ export class EarningManager {
   }
 
   public saveSession(): void {
-    const today = new Date().toISOString().split('T')[0];
-    localStorage.setItem(`earning_session_${this.userId}_${today}`, JSON.stringify(this.session));
+    if (typeof window === 'undefined') return;
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      localStorage.setItem(`earning_session_${this.userId}_${today}`, JSON.stringify(this.session));
+    } catch (e) {
+      console.warn('Failed to save session to localStorage:', e);
+    }
   }
 
   public addEarning(source: EarningSource, amount: number, metadata?: Record<string, unknown>): boolean {

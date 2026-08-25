@@ -15,13 +15,15 @@ export function useFavorites() {
   useEffect(() => {
     const loadFavorites = () => {
       try {
-        const stored = localStorage.getItem("tv-favorites")
-        if (stored) {
-          const parsed = JSON.parse(stored)
-          setFavorites(Array.isArray(parsed) ? parsed : [])
+        if (typeof window !== "undefined" && window.localStorage) {
+          const stored = localStorage.getItem("tv-favorites")
+          if (stored) {
+            const parsed = JSON.parse(stored)
+            setFavorites(Array.isArray(parsed) ? parsed : [])
+          }
         }
       } catch (error) {
-        console.error("Failed to load favorites from localStorage:", error)
+        console.warn("Failed to load favorites from storage:", error)
         setFavorites([])
       } finally {
         setIsLoading(false)
@@ -33,14 +35,18 @@ export function useFavorites() {
 
   // Save favorites to localStorage whenever they change
   useEffect(() => {
-    if (!isLoading) {
-      localStorage.setItem("tv-favorites", JSON.stringify(favorites))
+    if (!isLoading && typeof window !== "undefined" && window.localStorage) {
+      try {
+        localStorage.setItem("tv-favorites", JSON.stringify(favorites))
+      } catch (error) {
+        console.warn("Failed to save favorites to storage:", error)
+      }
     }
   }, [favorites, isLoading])
 
   const addFavorite = (channel: Channel) => {
+    if (!channel || !channel.id) return
     setFavorites((prev) => {
-      // Prevent duplicates
       const exists = prev.some((fav) => fav.id === channel.id)
       if (exists) return prev
 
@@ -55,10 +61,12 @@ export function useFavorites() {
   }
 
   const removeFavorite = (channelId: string) => {
+    if (!channelId) return
     setFavorites((prev) => prev.filter((fav) => fav.id !== channelId))
   }
 
   const toggleFavorite = (channel: Channel) => {
+    if (!channel || !channel.id) return
     const isFav = favorites.some((fav) => fav.id === channel.id)
     if (isFav) {
       removeFavorite(channel.id)
@@ -67,7 +75,7 @@ export function useFavorites() {
     }
   }
 
-  const isFavorite = (channelId: string) => favorites.some((fav) => fav.id === channelId)
+  const isFavorite = (channelId: string) => Boolean(channelId && favorites.some((fav) => fav.id === channelId))
 
   const getFavorites = () => favorites
 

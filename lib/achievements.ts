@@ -179,14 +179,19 @@ export function getAchievementProgress(achievements: UserAchievements): number {
 }
 
 export function saveAchievements(userId: string, achievements: UserAchievements): void {
-  localStorage.setItem(`achievements_${userId}`, JSON.stringify(achievements));
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(`achievements_${userId}`, JSON.stringify(achievements));
+  } catch (e) {
+    console.warn('Failed to save achievements:', e);
+  }
 }
 
 export function loadAchievements(userId: string): UserAchievements {
-  const saved = localStorage.getItem(`achievements_${userId}`);
-  if (!saved) return initializeAchievements(userId);
-  
+  if (typeof window === 'undefined') return initializeAchievements(userId);
   try {
+    const saved = localStorage.getItem(`achievements_${userId}`);
+    if (!saved) return initializeAchievements(userId);
     return JSON.parse(saved);
   } catch {
     return initializeAchievements(userId);

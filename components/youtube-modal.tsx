@@ -22,7 +22,7 @@ export function YouTubeModal({ isOpen, onClose }: YouTubeModalProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<YouTubeVideo[]>([])
   const [isSearching, setIsSearching] = useState(false)
-  const searchTimeoutRef = useRef<NodeJS.Timeout>()
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     if (isOpen) {

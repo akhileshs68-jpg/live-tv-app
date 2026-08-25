@@ -102,15 +102,17 @@ export function calculateLeaderboardRank(
   return allEarnings.filter(earning => earning > userEarnings).length + 1;
 }
 
-export function formatCoins(amount: number): string {
+export function formatWatchPoints(amount: number): string {
   if (amount >= 1000000) {
     return (amount / 1000000).toFixed(1) + 'M';
   }
   if (amount >= 1000) {
     return (amount / 1000).toFixed(1) + 'K';
   }
-  return amount.toString();
+  return (amount || 0).toString();
 }
+
+export const formatCoins = formatWatchPoints;
 
 export function getRewardEmoji(amount: number): string {
   if (amount >= 100) return '🎊';

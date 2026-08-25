@@ -1,0 +1,167 @@
+{
+  "entities": {
+    "users": {
+      "title": "Users",
+      "description": "Server-authoritative Pi Pioneer accounts and Watch Points balances",
+      "type": "object",
+      "properties": {
+        "piUserId": { "type": "string" },
+        "piUsername": { "type": "string" },
+        "totalCoins": { "type": "number" },
+        "lifetimeEarnings": { "type": "number" },
+        "dailyCoinsEarned": { "type": "number" },
+        "dailyResetDate": { "type": "string" },
+        "lastHeartbeatAt": { "type": "number" },
+        "premium": { "type": "object", "description": "Server-authoritative Premium Pioneer entitlement status" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["piUserId", "totalCoins"]
+    },
+    "watch_events": {
+      "title": "Watch Events",
+      "description": "Server-audited stream watch event logs",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string" },
+        "piUserId": { "type": "string" },
+        "channelId": { "type": "string" },
+        "channelName": { "type": "string" },
+        "watchSeconds": { "type": "number" },
+        "coinsAwarded": { "type": "number" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["eventId", "piUserId", "coinsAwarded", "timestamp"]
+    },
+    "creators": {
+      "title": "Creator Profiles",
+      "description": "Verified creator metadata and channel profiles",
+      "type": "object",
+      "properties": {
+        "piUserId": { "type": "string" },
+        "username": { "type": "string" },
+        "displayName": { "type": "string" },
+        "channelName": { "type": "string" },
+        "description": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "bannerUrl": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["piUserId", "displayName"]
+    },
+    "creator_channels": {
+      "title": "Creator Channels",
+      "description": "Creator-owned channel settings and customization",
+      "type": "object",
+      "properties": {
+        "channelId": { "type": "string" },
+        "ownerPiUserId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "bannerUrl": { "type": "string" },
+        "category": { "type": "string" },
+        "visibility": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["channelId", "ownerPiUserId", "name"]
+    },
+    "creator_videos": {
+      "title": "Creator Videos",
+      "description": "VOD, Scheduled, and Live video metadata",
+      "type": "object",
+      "properties": {
+        "videoId": { "type": "string" },
+        "ownerPiUserId": { "type": "string" },
+        "channelId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "duration": { "type": "number" },
+        "contentType": { "type": "string" },
+        "visibility": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["videoId", "ownerPiUserId", "channelId", "title", "videoUrl"]
+    },
+    "creator_playlists": {
+      "title": "Creator Playlists",
+      "description": "Curated video playlist collections",
+      "type": "object",
+      "properties": {
+        "playlistId": { "type": "string" },
+        "ownerPiUserId": { "type": "string" },
+        "channelId": { "type": "string" },
+        "title": { "type": "string" },
+        "videoIds": { "type": "array" },
+        "visibility": { "type": "string" }
+      },
+      "required": ["playlistId", "ownerPiUserId", "title"]
+    },
+    "channel_schedules": {
+      "title": "Channel Schedules",
+      "description": "Continuous 24/7 channel broadcast programming schedules",
+      "type": "object",
+      "properties": {
+        "scheduleId": { "type": "string" },
+        "ownerPiUserId": { "type": "string" },
+        "channelId": { "type": "string" },
+        "videoId": { "type": "string" },
+        "startAt": { "type": "string" },
+        "endAt": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["scheduleId", "ownerPiUserId", "channelId", "videoId", "startAt", "endAt"]
+    },
+    "pi_payments": {
+      "title": "Pi Payments",
+      "description": "Server-authoritative Pi Network payment transactions and idempotency state machine",
+      "type": "object",
+      "properties": {
+        "paymentId": { "type": "string" },
+        "piUserId": { "type": "string" },
+        "productId": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "status": { "type": "string" },
+        "txid": { "type": "string" },
+        "network": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["paymentId", "piUserId", "productId", "amount", "status", "network"]
+    },
+    "reward_redemptions": {
+      "title": "Reward Redemptions",
+      "description": "Server-audited Watch Points redemption transactions",
+      "type": "object",
+      "properties": {
+        "redemptionId": { "type": "string" },
+        "piUserId": { "type": "string" },
+        "productId": { "type": "string" },
+        "pointsCost": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["redemptionId", "piUserId", "productId", "pointsCost", "status"]
+    },
+    "entitlements": {
+      "title": "User Entitlements",
+      "description": "Server-authoritative user membership and platform benefit entitlements",
+      "type": "object",
+      "properties": {
+        "entitlementId": { "type": "string" },
+        "piUserId": { "type": "string" },
+        "type": { "type": "string" },
+        "source": { "type": "string" },
+        "status": { "type": "string" },
+        "startedAt": { "type": "string" },
+        "expiresAt": { "type": "string" }
+      },
+      "required": ["entitlementId", "piUserId", "type", "source", "status"]
+    }
+  }
+}

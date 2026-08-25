@@ -1,0 +1,12 @@
+{
+  "projectId": "pi-social-hub",
+  "appId": "1:pi-social-hub:web",
+  "apiKey": "",
+  "authDomain": "pi-social-hub.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "pi-social-hub.firebasestorage.app",
+  "messagingSenderId": "",
+  "measurementId": "",
+  "oAuthClientId": "",
+  "recaptchaSiteKey": ""
+}

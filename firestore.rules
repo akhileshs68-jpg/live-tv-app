@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Phase 6C Security Hardening: All direct client reads and writes are strictly blocked.
+    // All Watch Points transactions and balance retrieval are server-authoritative
+    // via authenticated server API endpoints using Firebase Admin SDK.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

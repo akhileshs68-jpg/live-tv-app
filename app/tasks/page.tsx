@@ -140,10 +140,6 @@ export default function TasksPage() {
     );
   }
 
-  if (!isAuthenticated) {
-    return <LoginScreen />;
-  }
-
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-0">
       <DashboardHeader user={user} />
