@@ -22,11 +22,14 @@ export default function WalletPage() {
 
   const fetchPayments = async () => {
     setLoadingPayments(true);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
     try {
       const res = await fetch(getApiUrl('/api/pi/payment-status'), {
         headers: {
           'Authorization': `Bearer ${piAccessToken || ''}`,
         },
+        signal: controller.signal,
       });
       if (res.ok) {
         const data = await res.json();
@@ -35,8 +38,9 @@ export default function WalletPage() {
         }
       }
     } catch (err) {
-      console.warn('Error fetching Pi payment transactions:', err);
+      console.warn('Note fetching Pi payment transactions:', err);
     } finally {
+      clearTimeout(timer);
       setLoadingPayments(false);
     }
   };
@@ -58,17 +62,6 @@ export default function WalletPage() {
       setTimeout(() => setCopyStatus(false), 2000);
     }
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse flex flex-col items-center gap-3">
-          <div className="w-12 h-12 bg-primary rounded-full" />
-          <p className="text-xs text-muted-foreground">Loading Pioneer Wallet...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background">

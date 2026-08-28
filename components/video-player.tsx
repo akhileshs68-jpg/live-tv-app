@@ -136,6 +136,20 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
     retryAttemptsRef.current = 0
   }, [channel.id, channel.isHd, channel.quality])
 
+  const handleFallbackOrError = useCallback((reason?: string) => {
+    retryAttemptsRef.current = 0
+    if (candidateIndex + 1 < streamCandidates.length) {
+      console.log(`[StreamEngine] Switching to fallback source ${candidateIndex + 2}/${streamCandidates.length} (${reason || "stream error"})`)
+      setCandidateIndex((prev) => prev + 1)
+    } else if (currentYoutubeId && !useIframeFallback) {
+      console.log("[StreamEngine] HLS streams exhausted, switching to YouTube live fallback")
+      setUseIframeFallback(true)
+    } else {
+      setPlayerState("error")
+      setErrorMsg("Live broadcast currently offline. You can retry or choose another channel.")
+    }
+  }, [candidateIndex, streamCandidates.length, currentYoutubeId, useIframeFallback])
+
   // Primary HLS & Video Stream Lifecycle Engine
   useEffect(() => {
     let isCancelled = false
@@ -167,17 +181,7 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
 
     const switchToNextCandidateOrFallback = (reason?: string) => {
       if (isCancelled) return
-      retryAttemptsRef.current = 0
-      if (candidateIndex + 1 < streamCandidates.length) {
-        console.log(`[StreamEngine] Switching to fallback source ${candidateIndex + 2}/${streamCandidates.length} (${reason || "stream error"})`)
-        setCandidateIndex((prev) => prev + 1)
-      } else if (currentYoutubeId && !useIframeFallback) {
-        console.log("[StreamEngine] HLS streams exhausted, switching to YouTube live fallback")
-        setUseIframeFallback(true)
-      } else {
-        setPlayerState("error")
-        setErrorMsg("Live broadcast currently offline. You can retry or choose another channel.")
-      }
+      handleFallbackOrError(reason)
     }
 
     const setupPlayer = () => {
@@ -373,13 +377,19 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
     return () => {
       isCancelled = true
       if (hlsRef.current) {
-        hlsRef.current.destroy()
+        try {
+          hlsRef.current.destroy()
+        } catch (e) {
+          console.warn("[StreamEngine] Non-fatal cleanup note:", e)
+        }
         hlsRef.current = null
       }
       if (video) {
-        video.pause()
-        video.removeAttribute("src")
-        video.load()
+        try {
+          video.pause()
+          video.removeAttribute("src")
+          video.load()
+        } catch (e) {}
       }
     }
   }, [activeStreamUrl, candidateIndex, streamCandidates, isYouTube, currentYoutubeId, useIframeFallback, channel.streamType])
@@ -883,6 +893,10 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
                 onWaiting={() => {
                   isActuallyPlayingRef.current = false
                   setPlayerState("buffering")
+                }}
+                onError={() => {
+                  isActuallyPlayingRef.current = false
+                  handleFallbackOrError("HTML5 video element stream error")
                 }}
               />
             </>

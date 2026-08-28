@@ -11,20 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AdSlot } from '@/components/ads/ad-slot';
 
 export default function EarnPage() {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse flex flex-col items-center gap-2">
-          <div className="w-10 h-10 bg-amber-500/20 rounded-full border-2 border-amber-500 flex items-center justify-center text-amber-500 font-bold">
-            ⭐
-          </div>
-          <p className="text-xs text-muted-foreground">Loading Watch Points...</p>
-        </div>
-      </div>
-    );
-  }
+  const { user } = useAuth();
 
   const dailyEarned = user?.dailyCoinsEarned || 0;
   const dailyLimit = 500;

@@ -10,19 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import { User, Settings, Bell, Shield, LogOut } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { user, premiumStatus, isAdmin, loading, logout } = useAuth();
+  const { user, premiumStatus, isAdmin, logout } = useAuth();
   const [saveSuccess, setSaveSuccess] = useState(false);
   const isPremium = Boolean(premiumStatus?.active);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse">
-          <div className="w-12 h-12 bg-primary rounded-full"></div>
-        </div>
-      </div>
-    );
-  }
 
   const handleSavePreferences = () => {
     setSaveSuccess(true);

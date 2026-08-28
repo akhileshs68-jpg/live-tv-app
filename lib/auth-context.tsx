@@ -107,22 +107,48 @@ const loadPiSDKScript = (): Promise<boolean> => {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [premiumStatus, setPremiumStatus] = useState<PremiumEntitlement | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return sessionStorage.getItem('pi_is_admin') === 'true';
+      } catch (e) {
+        // ignore
+      }
+    }
+    return false;
+  });
   const [loading, setLoading] = useState(true);
+
+  const updateAdminState = useCallback((admin: boolean) => {
+    setIsAdmin(admin);
+    if (typeof window !== 'undefined') {
+      try {
+        if (admin) {
+          sessionStorage.setItem('pi_is_admin', 'true');
+        } else {
+          sessionStorage.removeItem('pi_is_admin');
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, []);
   const [authStatus, setAuthStatus] = useState<AuthStatus>('idle');
   const [authMessage, setAuthMessage] = useState('Initializing Pi Network...');
   const [piAccessToken, setPiAccessToken] = useState<string | null>(null);
   const [isDevPreview, setIsDevPreview] = useState(false);
 
   const fetchServerAdminStatus = async (token: string | null): Promise<boolean> => {
-    if (!token) {
+    const isPiBrowser = typeof window !== 'undefined' && navigator.userAgent.includes('PiBrowser');
+    const effectiveToken = token || (!isPiBrowser ? 'dev_preview_token' : null);
+    if (!effectiveToken) {
       return false;
     }
     try {
       const res = await fetch(getApiUrl('/api/admin/verify'), {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${effectiveToken}`,
         },
       });
       if (res.ok) {
@@ -273,14 +299,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
       setAuthStatus('authenticated');
       setAuthMessage('Live TV Preview Mode');
+      setLoading(false);
 
-      // Check server admin status for preview authorization
+      // Check server admin status asynchronously for preview authorization
       fetchServerAdminStatus(devToken).then((serverAdmin) => {
-        setIsAdmin(serverAdmin);
+        updateAdminState(serverAdmin);
       }).catch(() => {
-        setIsAdmin(false);
-      }).finally(() => {
-        setLoading(false);
+        updateAdminState(false);
       });
       return;
     }
@@ -349,7 +374,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(authenticatedUser);
       setPremiumStatus(serverPrem);
-      setIsAdmin(serverAdmin);
+      updateAdminState(serverAdmin);
       AdManager.setPremiumStatus(serverPrem.active);
       setPiAccessToken(token);
       setIsDevPreview(false);
@@ -362,7 +387,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(null);
       setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
-      setIsAdmin(false);
+      updateAdminState(false);
       AdManager.setPremiumStatus(false);
       setPiAccessToken(null);
       setIsDevPreview(false);
@@ -376,7 +401,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [createPioneerUser]);
+  }, [createPioneerUser, updateAdminState]);
 
   const authInitializedRef = useRef(false);
 
@@ -385,13 +410,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authInitializedRef.current = true;
       authenticateWithPiSDK();
     }
+
+    // Safety fallback: Ensure loading flag resolves within 3 seconds so feature pages never deadlock on infinite spinner
+    const timer = setTimeout(() => {
+      setLoading((prev) => {
+        if (prev) {
+          console.warn('[Pi Auth] Safety timeout triggered: resolving loading state to prevent page deadlock.');
+          return false;
+        }
+        return prev;
+      });
+    }, 3000);
+
+    return () => clearTimeout(timer);
   }, [authenticateWithPiSDK]);
 
   const checkAdminStatus = useCallback(async (): Promise<boolean> => {
     const admin = await fetchServerAdminStatus(piAccessToken);
-    setIsAdmin(admin);
+    updateAdminState(admin);
     return admin;
-  }, [piAccessToken]);
+  }, [piAccessToken, updateAdminState]);
 
   const syncServerBalance = useCallback(
     async (explicitBalance?: { totalCoins?: number; dailyCoinsEarned?: number; lifetimeEarnings?: number }) => {
@@ -463,7 +501,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setUser(null);
     setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
-    setIsAdmin(false);
+    updateAdminState(false);
     AdManager.setPremiumStatus(false);
     setPiAccessToken(null);
     setAuthStatus('unauthenticated');

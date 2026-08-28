@@ -28,7 +28,48 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('Uncaught error caught by ErrorBoundary:', error, errorInfo)
   }
 
+  public componentDidMount() {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('unhandledrejection', this.handleUnhandledRejection)
+    }
+  }
+
+  public componentWillUnmount() {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('unhandledrejection', this.handleUnhandledRejection)
+    }
+  }
+
+  private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+    const reason = event.reason
+    const msg = String(reason?.message || reason || '')
+    // Prevent non-fatal background promise rejections (heartbeat, analytics, network glitches) from breaking the UI
+    if (
+      msg.includes('heartbeat') ||
+      msg.includes('analytics') ||
+      msg.includes('pi-sdk') ||
+      msg.includes('429') ||
+      msg.includes('Failed to fetch') ||
+      msg.includes('NetworkError') ||
+      msg.includes('cancelled')
+    ) {
+      console.warn('[GlobalAsyncGuard] Prevented background promise rejection from crashing UI:', msg)
+      event.preventDefault()
+    }
+  }
+
   private handleRetry = () => {
+    const errStr = String(this.state.error?.message || this.state.error || '')
+    if (
+      errStr.includes('Loading chunk') ||
+      errStr.includes('ChunkLoadError') ||
+      errStr.includes('dynamically imported module')
+    ) {
+      if (typeof window !== 'undefined') {
+        window.location.reload()
+        return
+      }
+    }
     this.setState({ hasError: false, error: null })
   }
 

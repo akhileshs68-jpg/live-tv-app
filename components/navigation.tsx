@@ -9,12 +9,13 @@ import { useAuth } from '@/lib/auth-context';
 
 export function Navigation() {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
 
   const mobileNavItems = [
     { href: '/', label: 'Home', icon: Home },
     { href: '/watch', label: 'Live', icon: Tv },
     { href: '/favorites', label: 'Saved', icon: Heart },
+    ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Shield }] : []),
     { href: '/settings', label: user?.piUsername ? `@${user.piUsername.slice(0, 6)}` : 'Pi', icon: User },
   ];
 
@@ -72,8 +73,8 @@ export function DesktopNavigation() {
 
   return (
     <nav className="hidden md:block bg-card border-b border-border sticky top-0 z-40">
-      <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 font-bold text-lg text-foreground hover:text-primary transition-colors">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 sm:gap-4">
+        <Link href="/" className="flex items-center gap-2 font-bold text-lg text-foreground hover:text-primary transition-colors shrink-0">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-extrabold text-sm shadow">
             π
           </div>
@@ -81,7 +82,7 @@ export function DesktopNavigation() {
             Pi Live TV
           </span>
         </Link>
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-1.5 md:gap-2.5 lg:gap-4 overflow-x-auto no-scrollbar max-w-full py-0.5">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
@@ -91,13 +92,13 @@ export function DesktopNavigation() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'flex items-center gap-2 text-sm transition-colors py-1 px-2 rounded-md',
+                  'flex items-center gap-1.5 text-xs lg:text-sm transition-colors py-1 px-2 rounded-md whitespace-nowrap shrink-0',
                   isActive
                     ? 'text-primary font-semibold bg-primary/10'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 )}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className="w-4 h-4 shrink-0" />
                 {item.label}
               </Link>
             );

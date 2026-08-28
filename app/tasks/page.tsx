@@ -23,18 +23,8 @@ interface Task {
 }
 
 export default function TasksPage() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'daily' | 'weekly' | 'monthly' | 'special'>('all');
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse">
-          <div className="w-12 h-12 bg-primary rounded-full"></div>
-        </div>
-      </div>
-    );
-  }
 
   const mockTasks: Task[] = [
     {
@@ -129,16 +119,6 @@ export default function TasksPage() {
   };
 
   const getProgressPercent = (task: Task) => (task.progress / task.maxProgress) * 100;
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse">
-          <div className="w-12 h-12 bg-primary rounded-full"></div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-0">

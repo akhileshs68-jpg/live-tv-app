@@ -42,11 +42,11 @@ export function DashboardHeader({ user }: { user: User | null }) {
           {isAdmin && (
             <Link
               href="/admin"
-              className="flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 text-amber-400 px-2 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-xs"
+              className="flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 text-amber-400 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-xs shrink-0"
               title="Open Owner / Admin Panel"
             >
-              <Shield className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Admin</span>
+              <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Admin</span>
             </Link>
           )}
 
