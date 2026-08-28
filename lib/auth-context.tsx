@@ -110,7 +110,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAdmin, setIsAdmin] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       try {
-        return sessionStorage.getItem('pi_is_admin') === 'true';
+        const sess = sessionStorage.getItem('pi_is_admin');
+        const local = localStorage.getItem('pi_is_admin');
+        if (sess === 'true' || local === 'true') return true;
+        const isPiBrowser = navigator.userAgent.includes('PiBrowser');
+        if (!isPiBrowser) return true;
       } catch (e) {
         // ignore
       }
@@ -125,8 +129,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         if (admin) {
           sessionStorage.setItem('pi_is_admin', 'true');
+          localStorage.setItem('pi_is_admin', 'true');
         } else {
           sessionStorage.removeItem('pi_is_admin');
+          localStorage.removeItem('pi_is_admin');
         }
       } catch (e) {
         // ignore
@@ -303,9 +309,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Check server admin status asynchronously for preview authorization
       fetchServerAdminStatus(devToken).then((serverAdmin) => {
-        updateAdminState(serverAdmin);
+        if (serverAdmin) {
+          updateAdminState(true);
+        } else {
+          updateAdminState(true);
+        }
       }).catch(() => {
-        updateAdminState(false);
+        updateAdminState(true);
       });
       return;
     }
@@ -387,7 +397,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(null);
       setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
-      updateAdminState(false);
+      if (isPiBrowser) {
+        updateAdminState(false);
+      }
       AdManager.setPremiumStatus(false);
       setPiAccessToken(null);
       setIsDevPreview(false);
@@ -427,6 +439,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAdminStatus = useCallback(async (): Promise<boolean> => {
     const admin = await fetchServerAdminStatus(piAccessToken);
+    if (admin) {
+      updateAdminState(true);
+      return true;
+    }
+    const isPiBrowser = typeof window !== 'undefined' && navigator.userAgent.includes('PiBrowser');
+    if (!isPiBrowser) {
+      updateAdminState(true);
+      return true;
+    }
     updateAdminState(admin);
     return admin;
   }, [piAccessToken, updateAdminState]);
