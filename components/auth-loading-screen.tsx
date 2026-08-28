@@ -9,6 +9,11 @@ export function AuthLoadingScreen() {
   const { authMessage, authStatus, loading, isAuthenticated, reauthenticate } = useAuth();
   const [dots, setDots] = useState('');
   const [dismissed, setDismissed] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!loading) return;
@@ -20,7 +25,12 @@ export function AuthLoadingScreen() {
     return () => clearInterval(interval);
   }, [loading]);
 
-  if (isAuthenticated || dismissed) return null;
+  if (!mounted) return null;
+
+  const isPiBrowser = typeof window !== 'undefined' && navigator.userAgent.includes('PiBrowser');
+
+  // Outside Pi Browser or once authenticated/dismissed, never block the Live TV UI
+  if (!isPiBrowser || isAuthenticated || dismissed) return null;
 
   const isPiRequired = authStatus === 'pi-browser-required';
   const isError = authStatus === 'error';

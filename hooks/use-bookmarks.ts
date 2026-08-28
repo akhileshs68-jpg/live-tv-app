@@ -20,21 +20,30 @@ export function useBookmarks() {
 
   // Initialize from localStorage
   useEffect(() => {
-    const stored = localStorage.getItem('tv-bookmarks');
-    if (stored) {
-      try {
-        setBookmarks(JSON.parse(stored));
-      } catch (e) {
-        console.error('Failed to parse bookmarks:', e);
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const stored = localStorage.getItem('tv-bookmarks');
+        if (stored) {
+          setBookmarks(JSON.parse(stored));
+        }
       }
+    } catch (e) {
+      console.warn('Failed to load bookmarks from localStorage:', e);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
   // Save to localStorage whenever bookmarks change
   useEffect(() => {
     if (!isLoading) {
-      localStorage.setItem('tv-bookmarks', JSON.stringify(bookmarks));
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem('tv-bookmarks', JSON.stringify(bookmarks));
+        }
+      } catch (e) {
+        console.warn('Failed to save bookmarks to localStorage:', e);
+      }
     }
   }, [bookmarks, isLoading]);
 

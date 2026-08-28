@@ -7,6 +7,21 @@ import type { SubscriptionPlanConfig, SubscriptionRecord, PaymentState, Channel 
  */
 
 export const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
+  LIVE_TV_PREMIUM_MONTHLY: {
+    id: "LIVE_TV_PREMIUM_MONTHLY",
+    title: "Live TV Premium (Testnet)",
+    description: "30 days of complete ad-free streaming, full access to premium channels, and priority rewards on Pi Testnet.",
+    pricePi: 0.25,
+    billingPeriod: "monthly",
+    isActive: true,
+    features: [
+      "All Free Tier Features",
+      "Ad-Free Streaming Guarantee",
+      "Full Access to Premium Channels",
+      "1.5x Watch Points Multiplier",
+      "Exclusive Pioneer VIP Badge",
+    ],
+  },
   free_tier: {
     id: "free_tier",
     title: "Standard Pioneer",

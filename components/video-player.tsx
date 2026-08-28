@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react"
-import type HlsType from "hls.js"
+import Hls from "hls.js"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -23,11 +23,14 @@ import {
   Settings,
   Check,
   Layers,
+  Share2,
 } from "lucide-react"
 import type { Channel } from "@/lib/types"
 import { useFavorites } from "@/hooks/use-favorites"
 import { useAuth } from "@/lib/auth-context"
 import { getApiUrl } from "@/lib/api-config"
+import { getChannelShareUrl, shareContent, getOrCreateAnonSessionId } from "@/lib/share-utils"
+import { toast } from "sonner"
 
 interface VideoPlayerProps {
   channel: Channel
@@ -46,7 +49,7 @@ interface QualityOption {
 
 export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const hlsRef = useRef<HlsType | null>(null)
+  const hlsRef = useRef<Hls | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const { isFavorite, toggleFavorite } = useFavorites()
@@ -164,6 +167,7 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
 
     const switchToNextCandidateOrFallback = (reason?: string) => {
       if (isCancelled) return
+      retryAttemptsRef.current = 0
       if (candidateIndex + 1 < streamCandidates.length) {
         console.log(`[StreamEngine] Switching to fallback source ${candidateIndex + 2}/${streamCandidates.length} (${reason || "stream error"})`)
         setCandidateIndex((prev) => prev + 1)
@@ -176,66 +180,75 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
       }
     }
 
-    const setupPlayer = async () => {
-      const isM3U8 = activeStreamUrl.includes(".m3u8") || activeStreamUrl.includes("/hls/")
+    const setupPlayer = () => {
+      const isHls = Boolean(
+        channel.streamType === "hls" ||
+        activeStreamUrl.includes(".m3u8") ||
+        activeStreamUrl.includes("/hls/") ||
+        activeStreamUrl.includes("m3u8")
+      )
 
-      if (isM3U8) {
+      if (isHls && typeof window !== "undefined" && Hls.isSupported()) {
         try {
-          const HlsModule = (await import("hls.js")).default
-          if (HlsModule.isSupported()) {
-            const hls = new HlsModule({
-              enableWorker: true,
-              lowLatencyMode: true,
-              backBufferLength: 60,
-              maxBufferLength: 30,
-              maxMaxBufferLength: 60,
-              manifestLoadingTimeOut: 12000,
-              manifestLoadingMaxRetry: 2,
-              levelLoadingTimeOut: 12000,
-              levelLoadingMaxRetry: 2,
-              fragLoadingTimeOut: 15000,
-              fragLoadingMaxRetry: 3,
-            })
+          const hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: false,
+            backBufferLength: 30,
+            maxBufferLength: 20,
+            maxMaxBufferLength: 30,
+            liveSyncDurationCount: 3,
+            liveMaxLatencyDurationCount: 6,
+            startFragPrefetch: true,
+            capLevelToPlayerSize: true,
+            manifestLoadingTimeOut: 8000,
+            manifestLoadingMaxRetry: 2,
+            levelLoadingTimeOut: 8000,
+            levelLoadingMaxRetry: 2,
+            fragLoadingTimeOut: 8000,
+            fragLoadingMaxRetry: 2,
+          })
 
-            hlsRef.current = hls
-            hls.loadSource(activeStreamUrl)
-            hls.attachMedia(video)
+          hlsRef.current = hls
+          hls.attachMedia(video)
+          hls.loadSource(activeStreamUrl)
 
-            hls.on(HlsModule.Events.MANIFEST_PARSED, (_, data) => {
-              if (isCancelled) return
+          hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+            if (isCancelled) return
 
-              // Parse Quality Levels
-              if (data && data.levels && data.levels.length > 0) {
-                const parsedOptions: QualityOption[] = [
-                  { levelIndex: -1, label: "Auto (Adaptive)" },
-                ]
-                let foundHd = false
+            // Parse Quality Levels
+            if (data && data.levels && data.levels.length > 0) {
+              const parsedOptions: QualityOption[] = [
+                { levelIndex: -1, label: "Auto (Adaptive)" },
+              ]
+              let foundHd = false
 
-                data.levels.forEach((lvl, idx) => {
-                  const h = lvl.height || 0
-                  let lbl = `${h}p`
-                  if (h >= 1080) lbl = "1080p HD"
-                  else if (h >= 720) lbl = "720p HD"
-                  else if (h >= 480) lbl = "480p SD"
-                  else if (h > 0) lbl = `${h}p`
-                  else lbl = `Level ${idx + 1}`
+              data.levels.forEach((lvl, idx) => {
+                const h = lvl.height || 0
+                let lbl = `${h}p`
+                if (h >= 1080) lbl = "1080p HD"
+                else if (h >= 720) lbl = "720p HD"
+                else if (h >= 480) lbl = "480p SD"
+                else if (h > 0) lbl = `${h}p`
+                else lbl = `Level ${idx + 1}`
 
-                  if (h >= 720) foundHd = true
+                if (h >= 720) foundHd = true
 
-                  parsedOptions.push({
-                    levelIndex: idx,
-                    label: lbl,
-                    height: h,
-                    bitrate: lvl.bitrate,
-                  })
+                parsedOptions.push({
+                  levelIndex: idx,
+                  label: lbl,
+                  height: h,
+                  bitrate: lvl.bitrate,
                 })
+              })
 
-                setQualityLevels(parsedOptions)
-                if (foundHd) setIsHdStream(true)
-              }
+              setQualityLevels(parsedOptions)
+              if (foundHd) setIsHdStream(true)
+            }
 
-              video
-                .play()
+            // Attempt unmuted play, cascading to muted autoplay if restricted by browser
+            const playPromise = video.play()
+            if (playPromise !== undefined) {
+              playPromise
                 .then(() => {
                   if (!isCancelled) {
                     setPlayerState("playing")
@@ -243,80 +256,113 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
                   }
                 })
                 .catch((err) => {
-                  console.log("[StreamEngine] Autoplay note:", err)
-                  if (!isCancelled) setPlayerState("paused")
+                  console.log("[StreamEngine] Unmuted autoplay blocked, cascading to muted autoplay:", err)
+                  if (!isCancelled) {
+                    video.muted = true
+                    setIsMuted(true)
+                    video
+                      .play()
+                      .then(() => {
+                        if (!isCancelled) {
+                          setPlayerState("playing")
+                          setErrorMsg(null)
+                        }
+                      })
+                      .catch((mutedErr) => {
+                        console.log("[StreamEngine] Muted autoplay also blocked:", mutedErr)
+                        if (!isCancelled) setPlayerState("paused")
+                      })
+                  }
                 })
-            })
+            }
+          })
 
-            hls.on(HlsModule.Events.LEVEL_SWITCHED, (_, data) => {
-              if (isCancelled || !hls.levels) return
-              const activeLevel = hls.levels[data.level]
-              if (activeLevel && activeLevel.height && activeLevel.height >= 720) {
-                setIsHdStream(true)
-              }
-            })
+          hls.on(Hls.Events.FRAG_BUFFERED, () => {
+            if (isCancelled) return
+            if (video && !video.paused && video.currentTime > 0) {
+              setPlayerState("playing")
+              setErrorMsg(null)
+            }
+          })
 
-            hls.on(HlsModule.Events.ERROR, (_, data) => {
-              if (isCancelled) return
+          hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
+            if (isCancelled || !hls.levels) return
+            const activeLevel = hls.levels[data.level]
+            if (activeLevel && activeLevel.height && activeLevel.height >= 720) {
+              setIsHdStream(true)
+            }
+          })
 
-              if (data.fatal) {
-                switch (data.type) {
-                  case HlsModule.ErrorTypes.NETWORK_ERROR:
-                    if (retryAttemptsRef.current < 2) {
-                      retryAttemptsRef.current += 1
-                      setPlayerState("retrying")
-                      hls.startLoad()
-                    } else {
-                      hls.destroy()
-                      hlsRef.current = null
-                      switchToNextCandidateOrFallback("Network error")
-                    }
-                    break
-                  case HlsModule.ErrorTypes.MEDIA_ERROR:
-                    if (retryAttemptsRef.current < 2) {
-                      retryAttemptsRef.current += 1
-                      setPlayerState("retrying")
-                      hls.recoverMediaError()
-                    } else {
-                      hls.destroy()
-                      hlsRef.current = null
-                      switchToNextCandidateOrFallback("Media decode error")
-                    }
-                    break
-                  default:
+          hls.on(Hls.Events.ERROR, (_, data) => {
+            if (isCancelled) return
+
+            if (data.fatal) {
+              switch (data.type) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                  if (retryAttemptsRef.current < 2) {
+                    retryAttemptsRef.current += 1
+                    setPlayerState("retrying")
+                    hls.startLoad()
+                  } else {
                     hls.destroy()
                     hlsRef.current = null
-                    switchToNextCandidateOrFallback("Fatal stream error")
-                    break
-                }
+                    switchToNextCandidateOrFallback("Network error")
+                  }
+                  break
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                  if (retryAttemptsRef.current < 2) {
+                    retryAttemptsRef.current += 1
+                    setPlayerState("retrying")
+                    hls.recoverMediaError()
+                  } else {
+                    hls.destroy()
+                    hlsRef.current = null
+                    switchToNextCandidateOrFallback("Media decode error")
+                  }
+                  break
+                default:
+                  hls.destroy()
+                  hlsRef.current = null
+                  switchToNextCandidateOrFallback("Fatal stream error")
+                  break
               }
-            })
+            }
+          })
 
-            return
-          }
+          return
         } catch (err) {
-          console.warn("[StreamEngine] HLS module load exception:", err)
+          console.warn("[StreamEngine] HLS initialization error:", err)
         }
       }
 
       if (isCancelled) return
 
       // Native playback for Safari / direct video format
-      if (video.canPlayType("application/vnd.apple.mpegurl") || !isM3U8) {
+      if (video.canPlayType("application/vnd.apple.mpegurl") || !isHls) {
         video.src = activeStreamUrl
         video.load()
-        video
-          .play()
-          .then(() => {
-            if (!isCancelled) {
-              setPlayerState("playing")
-              setErrorMsg(null)
-            }
-          })
-          .catch((err) => {
-            console.log("[StreamEngine] Native play note:", err)
-            if (!isCancelled) setPlayerState("paused")
-          })
+        const playPromise = video.play()
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              if (!isCancelled) {
+                setPlayerState("playing")
+                setErrorMsg(null)
+              }
+            })
+            .catch((err) => {
+              console.log("[StreamEngine] Native play note:", err)
+              if (!isCancelled) {
+                video.muted = true
+                setIsMuted(true)
+                video.play().then(() => {
+                  if (!isCancelled) setPlayerState("playing")
+                }).catch(() => {
+                  if (!isCancelled) setPlayerState("paused")
+                })
+              }
+            })
+        }
       } else {
         switchToNextCandidateOrFallback("HLS unsupported natively")
       }
@@ -336,7 +382,7 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
         video.load()
       }
     }
-  }, [activeStreamUrl, candidateIndex, streamCandidates, isYouTube, currentYoutubeId, useIframeFallback])
+  }, [activeStreamUrl, candidateIndex, streamCandidates, isYouTube, currentYoutubeId, useIframeFallback, channel.streamType])
 
   // Quality Level Switching
   const handleQualitySelect = (levelIdx: number) => {
@@ -350,6 +396,22 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
     }
   }
 
+  const handleShare = async () => {
+    const url = getChannelShareUrl(channel.id)
+    const res = await shareContent({
+      title: `${channel.name} - Pi Live TV`,
+      text: `Stream ${channel.name} live for free on Pi Live TV!`,
+      url,
+    })
+    if (res === "copied") {
+      toast.success(`Share link for ${channel.name} copied!`)
+    } else if (res === "shared") {
+      toast.success(`Sharing ${channel.name}`)
+    } else {
+      toast.error("Failed to share channel")
+    }
+  }
+
   // Reset watch session on channel change
   useEffect(() => {
     watchTimeRef.current = 0
@@ -357,7 +419,7 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
     setEarnedCoins(0)
   }, [channel.id])
 
-  // Watch Time & Reward Heartbeat Engine
+  // Watch Time & Reward Heartbeat Engine (Supports both Pi Pioneers and Public Guests)
   useEffect(() => {
     const interval = setInterval(async () => {
       if (!isActuallyPlayingRef.current) return
@@ -372,20 +434,20 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
 
         try {
           const token = piAccessTokenRef.current
-          if (!token) {
-            isSendingHeartbeatRef.current = false
-            return
+          const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+          }
+          if (token) {
+            headers["Authorization"] = `Bearer ${token}`
           }
 
           const res = await fetch(getApiUrl("/api/rewards/heartbeat"), {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
+            headers,
             body: JSON.stringify({
               channelId: channelRef.current.id,
               channelName: channelRef.current.name,
+              anonSessionId: getOrCreateAnonSessionId(),
             }),
           })
 
@@ -401,7 +463,7 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
                   dailyCoinsEarned: data.dailyCoinsEarned,
                   lifetimeEarnings: data.lifetimeEarnings,
                 })
-              } else {
+              } else if (token) {
                 syncServerBalanceRef.current()
               }
             }
@@ -478,16 +540,34 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
       videoRef.current.pause()
       setPlayerState("paused")
     } else {
-      videoRef.current
-        .play()
-        .then(() => {
-          isActuallyPlayingRef.current = true
-          setPlayerState("playing")
-        })
-        .catch(() => {
-          isActuallyPlayingRef.current = false
-          setPlayerState("paused")
-        })
+      videoRef.current.muted = isMuted
+      const playPromise = videoRef.current.play()
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            isActuallyPlayingRef.current = true
+            setPlayerState("playing")
+            setErrorMsg(null)
+          })
+          .catch((err) => {
+            console.warn("[StreamEngine] Manual play note:", err)
+            if (!isMuted) {
+              videoRef.current!.muted = true
+              setIsMuted(true)
+              videoRef.current!.play().then(() => {
+                isActuallyPlayingRef.current = true
+                setPlayerState("playing")
+                setErrorMsg(null)
+              }).catch(() => {
+                isActuallyPlayingRef.current = false
+                setPlayerState("paused")
+              })
+            } else {
+              isActuallyPlayingRef.current = false
+              setPlayerState("paused")
+            }
+          })
+      }
     }
   }
 
@@ -615,6 +695,17 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
               type="button"
               variant="ghost"
               size="icon"
+              onClick={handleShare}
+              className="text-zinc-300 hover:text-white hover:bg-white/10 h-10 w-10 sm:h-9 sm:w-9"
+              aria-label={`Share ${channel.name}`}
+              title={`Share ${channel.name}`}
+            >
+              <Share2 className="w-5 h-5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => toggleFavorite(channel)}
               className="text-zinc-300 hover:text-red-400 hover:bg-white/10 h-10 w-10 sm:h-9 sm:w-9"
               aria-label={favorited ? "Remove from Favorites" : "Add to Favorites"}
@@ -713,6 +804,46 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
                 </div>
               )}
 
+              {playerState === "buffering" && !errorMsg && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-20 pointer-events-none">
+                  <div className="animate-spin w-8 h-8 border-3 border-primary border-t-transparent rounded-full" />
+                </div>
+              )}
+
+              {playerState === "paused" && !errorMsg && (
+                <div
+                  className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-20 cursor-pointer gap-3 p-4 select-none"
+                  onClick={togglePlay}
+                >
+                  <Button
+                    size="lg"
+                    className="gap-2 text-sm sm:text-base font-bold px-6 py-6 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xl hover:scale-105 active:scale-95 transition-all"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      togglePlay()
+                    }}
+                  >
+                    <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current ml-0.5" />
+                    PLAY LIVE TV
+                  </Button>
+                  <p className="text-xs text-zinc-300 font-medium">Click to start live stream</p>
+                </div>
+              )}
+
+              {isMuted && playerState === "playing" && (
+                <div className="absolute top-3 left-3 z-30 pointer-events-auto">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={toggleMute}
+                    className="text-xs gap-1.5 bg-black/75 hover:bg-black text-amber-300 hover:text-amber-200 border border-amber-500/40 backdrop-blur-xs shadow-lg py-1 h-7 rounded-full"
+                  >
+                    <VolumeX className="w-3.5 h-3.5" />
+                    <span>Audio Muted — Tap to Unmute</span>
+                  </Button>
+                </div>
+              )}
+
               <video
                 ref={videoRef}
                 className={`w-full h-full max-w-full max-h-full bg-black ${
@@ -720,12 +851,22 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
                 }`}
                 playsInline
                 controls={false}
+                controlsList="nodownload noRemotePlayback"
+                disablePictureInPicture
+                onContextMenu={(e) => e.preventDefault()}
                 autoPlay
-                crossOrigin="anonymous"
                 onCanPlay={() => {
                   isActuallyPlayingRef.current = true
                   setPlayerState("playing")
                   setErrorMsg(null)
+                }}
+                onTimeUpdate={() => {
+                  if (videoRef.current && !videoRef.current.paused && videoRef.current.currentTime > 0) {
+                    isActuallyPlayingRef.current = true
+                    if (playerState === "buffering" || playerState === "loading") {
+                      setPlayerState("playing")
+                    }
+                  }
                 }}
                 onPlay={() => {
                   isActuallyPlayingRef.current = true
@@ -899,6 +1040,17 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
             </div>
 
             <div className="flex items-center gap-2 text-zinc-400">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleShare}
+                className="h-7 px-2 text-[11px] text-zinc-300 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 gap-1.5 rounded"
+                title={`Share ${channel.name}`}
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Share</span>
+              </Button>
               {channel.country && <span className="bg-zinc-800 px-2 py-1 rounded">{channel.country}</span>}
               {channel.globalCategory && (
                 <span className="bg-zinc-800 px-2 py-1 rounded">{channel.globalCategory}</span>

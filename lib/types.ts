@@ -55,6 +55,10 @@ export interface OwnerAnalyticsReport {
   viewsToday: number
   totalPlatformViews: number
   totalWatchHours: number
+  piWatchHours?: number
+  publicWatchHours?: number
+  piViewers?: number
+  publicViewers?: number
   peakConcurrentViewers: number
   topChannelsByTRP: Array<{
     channelId: string

@@ -4,9 +4,11 @@ import React from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Heart, Play, Radio, Crown } from "lucide-react"
+import { Heart, Play, Radio, Crown, Share2 } from "lucide-react"
 import type { Channel } from "@/lib/types"
 import { useFavorites } from "@/hooks/use-favorites"
+import { getChannelShareUrl, shareContent } from "@/lib/share-utils"
+import { toast } from "sonner"
 
 interface ChannelCardProps {
   channel: Channel
@@ -23,10 +25,35 @@ export function ChannelCard({ channel, onPlay }: ChannelCardProps) {
     toggleFavorite(channel)
   }
 
+  const handleShareClick = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const url = getChannelShareUrl(channel.id)
+    const res = await shareContent({
+      title: `${channel.name} - Pi Live TV`,
+      text: `Watch ${channel.name} live for free on Pi Live TV!`,
+      url,
+    })
+    if (res === "copied") {
+      toast.success(`Share link for ${channel.name} copied!`)
+    } else if (res === "shared") {
+      toast.success(`Sharing ${channel.name}`)
+    } else {
+      toast.error("Failed to share channel")
+    }
+  }
+
   return (
     <Card 
-      className="overflow-hidden bg-card border-border hover:border-primary/50 transition-all group cursor-pointer active:scale-[0.98] relative shadow-xs"
+      className="overflow-hidden bg-card border-border hover:border-primary/50 transition-all group cursor-pointer active:scale-[0.98] relative shadow-xs select-none"
       onClick={() => onPlay(channel)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onPlay(channel)
+        }
+      }}
     >
       <div className="relative aspect-video bg-gradient-to-br from-secondary/80 to-muted flex items-center justify-center overflow-hidden">
         {/* Live, HD & Premium Badges */}
@@ -48,16 +75,27 @@ export function ChannelCard({ channel, onPlay }: ChannelCardProps) {
           )}
         </div>
 
-        {/* Favorite Button */}
-        <div className="absolute top-2 right-2 z-10">
+        {/* Action Buttons: Favorite and Share */}
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-xs transition-transform active:scale-90"
+            className="h-7 w-7 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-xs transition-transform active:scale-90"
+            onClick={handleShareClick}
+            title={`Share ${channel.name}`}
+            aria-label={`Share ${channel.name}`}
+          >
+            <Share2 className="w-3.5 h-3.5 text-white/80" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-xs transition-transform active:scale-90"
             onClick={handleFavoriteClick}
             title={favorited ? "Remove from Favorites" : "Add to Favorites"}
+            aria-label={favorited ? "Remove from Favorites" : "Add to Favorites"}
           >
-            <Heart className={`w-4 h-4 ${favorited ? "fill-red-500 text-red-500" : "text-white/80"}`} />
+            <Heart className={`w-3.5 h-3.5 ${favorited ? "fill-red-500 text-red-500" : "text-white/80"}`} />
           </Button>
         </div>
 
@@ -76,7 +114,7 @@ export function ChannelCard({ channel, onPlay }: ChannelCardProps) {
         )}
 
         {/* Mobile Play Overlay Button */}
-        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
           <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center shadow-lg text-primary-foreground transform group-hover:scale-110 transition-transform">
             <Play className="w-5 h-5 fill-current ml-0.5" />
           </div>

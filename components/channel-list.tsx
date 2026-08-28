@@ -21,8 +21,8 @@ import { getApiUrl } from "@/lib/api-config"
 
 export function ChannelList() {
   const { user } = useAuth()
-  const [channels, setChannels] = useState<Channel[]>([])
-  const [loading, setLoading] = useState(true)
+  const [channels, setChannels] = useState<Channel[]>(() => GLOBAL_CHANNELS)
+  const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("All")
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
@@ -42,24 +42,51 @@ export function ChannelList() {
   }
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search)
+      const targetChannelId = params.get("channel")
+      if (targetChannelId) {
+        const match = GLOBAL_CHANNELS.find((c) => c.id === targetChannelId) ||
+                      GLOBAL_CHANNELS.find((c) => c.id.toLowerCase().includes(targetChannelId.toLowerCase()))
+        if (match) {
+          handleChannelSelect(match)
+        }
+      }
+    }
+
     fetchChannels()
   }, [])
 
   const fetchChannels = async () => {
     try {
-      setLoading(true)
-      const response = await fetch(getApiUrl("/api/channels"))
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000)
+
+      const response = await fetch("/api/channels", {
+        signal: controller.signal,
+      })
+      clearTimeout(timeoutId)
+
       if (response.ok) {
         const data = await response.json()
-        if (data.channels && data.channels.length > 0) {
+        if (data && Array.isArray(data.channels) && data.channels.length > 0) {
           setChannels(data.channels)
-          return
+
+          if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search)
+            const targetChannelId = params.get("channel")
+            if (targetChannelId) {
+              const match = data.channels.find((c: Channel) => c.id === targetChannelId) || 
+                            data.channels.find((c: Channel) => c.id.toLowerCase().includes(targetChannelId.toLowerCase()))
+              if (match) {
+                handleChannelSelect(match)
+              }
+            }
+          }
         }
       }
-      setChannels(GLOBAL_CHANNELS)
     } catch (error) {
-      console.warn("Failed to fetch channels, using fallback list:", error)
-      setChannels(GLOBAL_CHANNELS)
+      console.warn("API channel fetch fallback used:", error)
     } finally {
       setLoading(false)
     }
@@ -307,7 +334,7 @@ export function ChannelList() {
         </div>
       </div>
 
-      {playingChannel && <VideoPlayer channel={playingChannel} onClose={() => setPlayingChannel(null)} />}
+      {playingChannel && <VideoPlayer key={playingChannel.id} channel={playingChannel} onClose={() => setPlayingChannel(null)} />}
       {premiumPromptChannel && (
         <PremiumPromptModal
           channel={premiumPromptChannel}

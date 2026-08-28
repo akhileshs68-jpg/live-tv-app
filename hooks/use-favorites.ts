@@ -15,8 +15,8 @@ export function useFavorites() {
   useEffect(() => {
     const loadFavorites = () => {
       try {
-        if (typeof window !== "undefined" && window.localStorage) {
-          const stored = localStorage.getItem("tv-favorites")
+        if (typeof window !== "undefined") {
+          const stored = window.localStorage ? localStorage.getItem("tv-favorites") : null
           if (stored) {
             const parsed = JSON.parse(stored)
             setFavorites(Array.isArray(parsed) ? parsed : [])
@@ -35,9 +35,11 @@ export function useFavorites() {
 
   // Save favorites to localStorage whenever they change
   useEffect(() => {
-    if (!isLoading && typeof window !== "undefined" && window.localStorage) {
+    if (!isLoading && typeof window !== "undefined") {
       try {
-        localStorage.setItem("tv-favorites", JSON.stringify(favorites))
+        if (window.localStorage) {
+          localStorage.setItem("tv-favorites", JSON.stringify(favorites))
+        }
       } catch (error) {
         console.warn("Failed to save favorites to storage:", error)
       }

@@ -37,6 +37,7 @@ import {
   Sparkles,
   ShieldCheck,
   Megaphone,
+  Check,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import type { OwnerAnalyticsReport } from '@/lib/types';
@@ -50,6 +51,154 @@ export function AdminPanel() {
 
   const [analyticsReport, setAnalyticsReport] = useState<OwnerAnalyticsReport | null>(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+
+  // Testnet Pricing State
+  const [testnetPrice, setTestnetPrice] = useState<number | null>(0.25);
+  const [inputPrice, setInputPrice] = useState('0.25');
+  const [savingPrice, setSavingPrice] = useState(false);
+  const [priceMsg, setPriceMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Channel Access Management State
+  const [allChannelsList, setAllChannelsList] = useState<typeof GLOBAL_CHANNELS>(GLOBAL_CHANNELS);
+  const [channelOverrides, setChannelOverrides] = useState<Record<string, 'FREE' | 'PREMIUM' | 'DISABLED'>>({});
+  const [channelSearch, setChannelSearch] = useState('');
+  const [channelFilter, setChannelFilter] = useState<'ALL' | 'FREE' | 'PREMIUM' | 'DISABLED'>('ALL');
+  const [savingChannelId, setSavingChannelId] = useState<string | null>(null);
+  const [channelSuccessMsg, setChannelSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(getApiUrl('/api/channels'))
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.channels) && data.channels.length > 0) {
+          setAllChannelsList(data.channels);
+        }
+      })
+      .catch((err) => console.warn('[AdminPanel] Error loading full channel catalogue:', err));
+  }, []);
+
+  const fetchChannelAccess = async () => {
+    try {
+      const res = await fetch(getApiUrl('/api/admin/channels'));
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.overrides) {
+          setChannelOverrides(data.overrides);
+        }
+      }
+    } catch (e) {
+      console.warn('[AdminPanel] Error fetching channel access overrides:', e);
+    }
+  };
+
+  const handleUpdateChannelAccess = async (channelId: string, status: 'FREE' | 'PREMIUM' | 'DISABLED') => {
+    setSavingChannelId(channelId);
+    setChannelSuccessMsg(null);
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (piAccessToken) {
+        headers['Authorization'] = `Bearer ${piAccessToken}`;
+      }
+
+      const res = await fetch(getApiUrl('/api/admin/channels'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ channelId, status }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setChannelOverrides((prev) => ({
+          ...prev,
+          [channelId]: status,
+        }));
+        setChannelSuccessMsg(`Channel status updated to ${status}`);
+        setTimeout(() => setChannelSuccessMsg(null), 3000);
+      }
+    } catch (err: any) {
+      console.error('Error updating channel access:', err);
+    } finally {
+      setSavingChannelId(null);
+    }
+  };
+
+  const fetchPricing = async () => {
+    try {
+      const res = await fetch(getApiUrl('/api/admin/pricing'));
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data.pricePi === 'number') {
+          setTestnetPrice(data.pricePi);
+          setInputPrice(String(data.pricePi));
+        }
+      }
+    } catch (e) {
+      console.warn('[AdminPanel] Error fetching pricing:', e);
+    }
+  };
+
+  const handleSavePrice = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setSavingPrice(true);
+    setPriceMsg(null);
+    try {
+      const parsed = parseFloat(inputPrice);
+      if (isNaN(parsed) || !isFinite(parsed) || parsed <= 0) {
+        setPriceMsg({
+          type: 'error',
+          text: 'Please enter a valid positive decimal amount greater than 0 (e.g. 0.25, 0.5, 1.0).',
+        });
+        setSavingPrice(false);
+        return;
+      }
+
+      if (parsed > 10000) {
+        setPriceMsg({
+          type: 'error',
+          text: 'Price exceeds maximum allowed threshold of 10,000 Test-Pi.',
+        });
+        setSavingPrice(false);
+        return;
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (piAccessToken) {
+        headers['Authorization'] = `Bearer ${piAccessToken}`;
+      }
+
+      const res = await fetch(getApiUrl('/api/admin/pricing'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ pricePi: parsed }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTestnetPrice(data.pricePi);
+        setInputPrice(String(data.pricePi));
+        setPriceMsg({
+          type: 'success',
+          text: `Success! Live TV Premium Testnet monthly price set to ${data.pricePi} Test-Pi.`,
+        });
+      } else {
+        setPriceMsg({
+          type: 'error',
+          text: data.error || 'Failed to update price.',
+        });
+      }
+    } catch (err: any) {
+      setPriceMsg({
+        type: 'error',
+        text: err?.message || 'Network error updating price.',
+      });
+    } finally {
+      setSavingPrice(false);
+    }
+  };
 
   const fetchAnalytics = async () => {
     setLoadingAnalytics(true);
@@ -74,6 +223,8 @@ export function AdminPanel() {
 
   useEffect(() => {
     fetchAnalytics();
+    fetchPricing();
+    fetchChannelAccess();
   }, [piAccessToken]);
 
   const fraudFlags = [
@@ -86,7 +237,7 @@ export function AdminPanel() {
     {
       label: 'LIVE NOW (Concurrent)',
       value: analyticsReport ? analyticsReport.totalActiveViewers.toString() : '0',
-      change: 'Real-time audited viewers',
+      change: 'Real-time active viewers',
       icon: Radio,
     },
     {
@@ -102,9 +253,11 @@ export function AdminPanel() {
       icon: Eye,
     },
     {
-      label: 'Total Platform Watch Time',
+      label: 'Platform Watch Time',
       value: analyticsReport ? `${analyticsReport.totalWatchHours} hrs` : '0 hrs',
-      change: 'Audited watch heartbeats',
+      change: analyticsReport?.piWatchHours !== undefined
+        ? `Pi: ${analyticsReport.piWatchHours}h | Public: ${analyticsReport.publicWatchHours || 0}h`
+        : 'Audited watch heartbeats',
       icon: Clock,
     },
   ];
@@ -256,6 +409,61 @@ export function AdminPanel() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Audience Breakdown: Pi Pioneers vs Public Guests */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <Crown className="w-4 h-4 text-amber-400" />
+                  Pi Pioneers Audience Segment
+                </CardTitle>
+                <CardDescription className="text-xs">Authenticated Pi Network viewers with Watch Points eligibility</CardDescription>
+              </CardHeader>
+              <CardContent className="pt-2 space-y-2">
+                <div className="flex justify-between items-center text-sm py-1 border-b border-border/50">
+                  <span className="text-muted-foreground">Pioneer Watch Time</span>
+                  <span className="font-mono font-bold text-foreground">{analyticsReport?.piWatchHours || 0} hrs</span>
+                </div>
+                <div className="flex justify-between items-center text-sm py-1 border-b border-border/50">
+                  <span className="text-muted-foreground">Estimated Pioneer Viewers</span>
+                  <span className="font-mono font-bold text-foreground">{analyticsReport?.piViewers || 0}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm py-1">
+                  <span className="text-muted-foreground">Watch Points Status</span>
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[11px]">
+                    Active (500/day cap)
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <Users className="w-4 h-4 text-blue-400" />
+                  Public Guests Audience Segment
+                </CardTitle>
+                <CardDescription className="text-xs">Direct web browser viewers (Chrome/Safari) without Pi Auth</CardDescription>
+              </CardHeader>
+              <CardContent className="pt-2 space-y-2">
+                <div className="flex justify-between items-center text-sm py-1 border-b border-border/50">
+                  <span className="text-muted-foreground">Public Watch Time</span>
+                  <span className="font-mono font-bold text-foreground">{analyticsReport?.publicWatchHours || 0} hrs</span>
+                </div>
+                <div className="flex justify-between items-center text-sm py-1 border-b border-border/50">
+                  <span className="text-muted-foreground">Estimated Public Viewers</span>
+                  <span className="font-mono font-bold text-foreground">{analyticsReport?.publicViewers || 0}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm py-1">
+                  <span className="text-muted-foreground">Public Access Status</span>
+                  <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/20 text-[11px]">
+                    100% Free / Unlocked
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* 2. Trends Tab (7-Day & 30-Day) */}
@@ -335,50 +543,163 @@ export function AdminPanel() {
         <TabsContent value="premium" className="space-y-4">
           <Card className="bg-card border-border">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base font-bold flex items-center gap-2">
-                <Crown className="w-4 h-4 text-amber-400" />
-                Channel Catalog & Monetization Status
-              </CardTitle>
-              <CardDescription className="text-xs">
-                All existing live broadcast channels are classified as 100% Free. Future premium channels will appear here.
-              </CardDescription>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <CardTitle className="text-base font-bold flex items-center gap-2">
+                    <Crown className="w-4 h-4 text-amber-400" />
+                    Channel Access & Monetization Controls
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Initial default for all channels is FREE. Administrator can configure individual channel access permissions (FREE, PREMIUM, DISABLED).
+                  </CardDescription>
+                </div>
+                <Badge variant="outline" className="text-green-500 border-green-500/30 text-xs">
+                  Default: All Channels FREE
+                </Badge>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-xs">
-                <span className="font-semibold text-green-500">100+ Free Curated Channels Active</span>
-                <Badge variant="outline" className="text-green-500 border-green-500/30">Free Access Policy</Badge>
+            <CardContent className="space-y-4">
+              {channelSuccessMsg && (
+                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
+                  <Check className="w-4 h-4 shrink-0" />
+                  <span>{channelSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* Filters and search */}
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="relative w-full sm:w-64">
+                  <Input
+                    placeholder="Search channel name or category..."
+                    value={channelSearch}
+                    onChange={(e) => setChannelSearch(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {(['ALL', 'FREE', 'PREMIUM', 'DISABLED'] as const).map((filter) => (
+                    <Button
+                      key={filter}
+                      type="button"
+                      variant={channelFilter === filter ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setChannelFilter(filter)}
+                      className={`h-7 px-2.5 text-xs ${
+                        channelFilter === filter
+                          ? filter === 'PREMIUM'
+                            ? 'bg-amber-500 text-black font-bold'
+                            : filter === 'DISABLED'
+                            ? 'bg-destructive text-destructive-foreground'
+                            : filter === 'FREE'
+                            ? 'bg-emerald-600 text-white'
+                            : ''
+                          : ''
+                      }`}
+                    >
+                      {filter}
+                    </Button>
+                  ))}
+                </div>
               </div>
 
-              <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
-                {GLOBAL_CHANNELS.slice(0, 15).map((ch) => (
-                  <div
-                    key={ch.id}
-                    className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/15 border border-border/50 text-xs"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-7 h-7 rounded bg-background flex items-center justify-center p-1 border border-border">
-                        {ch.logo ? (
-                          <img src={ch.logo} alt={ch.name} className="w-full h-full object-contain" />
-                        ) : (
-                          <Tv className="w-3.5 h-3.5 text-muted-foreground" />
-                        )}
-                      </div>
-                      <div className="truncate">
-                        <p className="font-semibold text-foreground truncate">{ch.name}</p>
-                        <p className="text-[10px] text-muted-foreground">{ch.category} • {ch.country}</p>
-                      </div>
-                    </div>
+              <div className="space-y-2 max-h-[440px] overflow-y-auto pr-1">
+                {allChannelsList
+                  .filter((ch) => {
+                    const currentStatus = channelOverrides[ch.id] || 'FREE';
+                    const matchesFilter =
+                      channelFilter === 'ALL' ||
+                      (channelFilter === 'FREE' && currentStatus === 'FREE') ||
+                      (channelFilter === 'PREMIUM' && currentStatus === 'PREMIUM') ||
+                      (channelFilter === 'DISABLED' && currentStatus === 'DISABLED');
 
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="text-[10px] font-mono">
-                        {ch.isHd ? '1080p HD' : 'SD'}
-                      </Badge>
-                      <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px]">
-                        FREE
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
+                    const matchesSearch =
+                      !channelSearch ||
+                      ch.name.toLowerCase().includes(channelSearch.toLowerCase()) ||
+                      (ch.category || '').toLowerCase().includes(channelSearch.toLowerCase());
+
+                    return matchesFilter && matchesSearch;
+                  })
+                  .slice(0, 100)
+                  .map((ch) => {
+                    const status = channelOverrides[ch.id] || 'FREE';
+                    const isSaving = savingChannelId === ch.id;
+
+                    return (
+                      <div
+                        key={ch.id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-secondary/15 border border-border/50 text-xs flex-wrap gap-2"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded bg-background flex items-center justify-center p-1 border border-border shrink-0">
+                            {ch.logo ? (
+                              <img src={ch.logo} alt={ch.name} className="w-full h-full object-contain" />
+                            ) : (
+                              <Tv className="w-3.5 h-3.5 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="truncate">
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-semibold text-foreground truncate">{ch.name}</p>
+                              {ch.isHd && (
+                                <Badge variant="secondary" className="text-[9px] py-0 px-1 font-mono">
+                                  HD
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">{ch.category} • {ch.country}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 ml-auto">
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={isSaving}
+                            variant={status === 'FREE' ? 'default' : 'outline'}
+                            onClick={() => handleUpdateChannelAccess(ch.id, 'FREE')}
+                            className={`h-7 px-2 text-[10px] font-bold ${
+                              status === 'FREE'
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                : 'border-border text-muted-foreground'
+                            }`}
+                          >
+                            FREE
+                          </Button>
+
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={isSaving}
+                            variant={status === 'PREMIUM' ? 'default' : 'outline'}
+                            onClick={() => handleUpdateChannelAccess(ch.id, 'PREMIUM')}
+                            className={`h-7 px-2 text-[10px] font-bold ${
+                              status === 'PREMIUM'
+                                ? 'bg-amber-500 hover:bg-amber-600 text-black'
+                                : 'border-border text-muted-foreground'
+                            }`}
+                          >
+                            PREMIUM
+                          </Button>
+
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={isSaving}
+                            variant={status === 'DISABLED' ? 'default' : 'outline'}
+                            onClick={() => handleUpdateChannelAccess(ch.id, 'DISABLED')}
+                            className={`h-7 px-2 text-[10px] font-bold ${
+                              status === 'DISABLED'
+                                ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
+                                : 'border-border text-muted-foreground'
+                            }`}
+                          >
+                            DISABLED
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             </CardContent>
           </Card>
@@ -386,14 +707,110 @@ export function AdminPanel() {
 
         {/* 4. Subscription Plans Tab */}
         <TabsContent value="plans" className="space-y-4">
+          {/* Admin Testnet Price Controller */}
+          <Card className="bg-card border-border border-amber-500/30">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <CardTitle className="text-base font-bold flex items-center gap-2">
+                    <Crown className="w-4 h-4 text-amber-500" />
+                    TESTNET PREMIUM SUBSCRIPTION
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Admin-controlled monthly pricing for Live TV Premium on Pi Testnet (LIVE_TV_PREMIUM_MONTHLY).
+                  </CardDescription>
+                </div>
+                <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-xs font-mono">
+                  Active Price: {testnetPrice !== null ? `${testnetPrice} Test-Pi` : '0.25 Test-Pi'}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="p-3.5 rounded-lg bg-secondary/15 border border-border/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">
+                    Current monthly price: <span className="font-bold text-amber-400">{testnetPrice !== null ? `${testnetPrice} Test-Pi` : '0.25 Test-Pi'}</span>
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    30-day billing duration. Every new Testnet subscription will immediately use this active price.
+                  </p>
+                </div>
+
+                <form onSubmit={handleSavePrice} className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="relative w-36">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      max="10000"
+                      value={inputPrice}
+                      onChange={(e) => setInputPrice(e.target.value)}
+                      placeholder="0.25"
+                      className="text-xs pr-8 font-mono"
+                      disabled={savingPrice}
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none font-semibold">
+                      Pi
+                    </span>
+                  </div>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={savingPrice || !inputPrice}
+                    className="text-xs bg-amber-500 hover:bg-amber-600 text-black font-semibold shrink-0"
+                  >
+                    {savingPrice ? 'Saving...' : 'Save Price'}
+                  </Button>
+                </form>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <span className="text-[11px] text-muted-foreground">Quick presets:</span>
+                {[0.25, 0.5, 0.75, 1.0, 2.0].map((preset) => (
+                  <Button
+                    key={preset}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setInputPrice(String(preset));
+                    }}
+                    className={`h-7 px-2.5 text-xs font-mono ${
+                      Number(inputPrice) === preset ? 'border-amber-500 text-amber-400 bg-amber-500/10' : ''
+                    }`}
+                  >
+                    {preset} Pi
+                  </Button>
+                ))}
+              </div>
+
+              {priceMsg && (
+                <div
+                  className={`p-3 rounded-lg text-xs flex items-center gap-2 ${
+                    priceMsg.type === 'success'
+                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                      : 'bg-destructive/10 border border-destructive/30 text-destructive'
+                  }`}
+                >
+                  {priceMsg.type === 'success' ? (
+                    <Check className="w-4 h-4 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                  )}
+                  <span>{priceMsg.text}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="bg-card border-border">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-bold flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-primary" />
-                Subscription Tiers (Future Pi Architecture)
+                Subscription Tiers Overview
               </CardTitle>
               <CardDescription className="text-xs">
-                Extensible subscription configuration prepared for future low-cost Pi plans.
+                Extensible subscription configuration prepared for low-cost Pi plans.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

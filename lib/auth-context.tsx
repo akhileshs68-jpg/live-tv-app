@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { PI_NETWORK_CONFIG } from '@/lib/system-config';
 import { getApiUrl } from '@/lib/api-config';
 import type { User, PremiumEntitlement } from '@/lib/db-types';
@@ -136,7 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const generateReferralCode = useCallback((piUsername?: string) => {
-    const name = piUsername || user?.piUsername || 'USR';
+    const name = piUsername || 'USR';
     const timestamp = Date.now().toString(36).toUpperCase();
     const usernameHash = name
       .substring(0, 3)
@@ -144,7 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .padEnd(3, 'X');
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
     return `${usernameHash}${random}${timestamp.substring(0, 4)}`;
-  }, [user?.piUsername]);
+  }, []);
 
   const fetchServerPremiumStatus = async (token: string | null): Promise<PremiumEntitlement> => {
     if (!token) {
@@ -249,52 +249,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthStatus('initializing');
     setAuthMessage('Detecting Pi Browser...');
 
-    const isPiBrowser = typeof window !== 'undefined' && (
-      navigator.userAgent.includes('PiBrowser')
-    );
-
-    // AI Studio preview container hostnames explicitly start with 'ais-dev-' or 'ais-pre-'
-    const isAIStudioPreviewHost = typeof window !== 'undefined' && (
-      window.location.hostname.startsWith('ais-dev-') ||
-      window.location.hostname.startsWith('ais-pre-') ||
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1' ||
-      window.location.search.includes('dev_preview=true')
-    );
-
-    // Dev preview mode is strictly allowed ONLY in desktop local/AI Studio IDE previews outside Pi Browser.
-    // It is ABSOLUTELY FORBIDDEN if running inside Pi Browser.
-    const isLocalDevPreviewAllowed = !isPiBrowser && isAIStudioPreviewHost;
+    // Check if running inside official Pi Browser app
+    const isPiBrowser = typeof window !== 'undefined' && navigator.userAgent.includes('PiBrowser');
 
     console.log('[Pi Auth] Environment check:', {
       isPiBrowser,
-      isAIStudioPreviewHost,
-      isLocalDevPreviewAllowed,
       hostname: typeof window !== 'undefined' ? window.location.hostname : 'SSR',
     });
+
+    // If outside Pi Browser (e.g. AI Studio Preview, desktop, or regular browser):
+    // Provide an immediate, non-blocking Pioneer session so all channels, categories, and player render instantly.
+    if (!isPiBrowser) {
+      console.log('[Pi Auth] Outside Pi Browser - initializing instant Pioneer Live TV preview session.');
+      setIsDevPreview(true);
+      const devToken = 'dev_preview_token';
+      setPiAccessToken(devToken);
+      
+      const guestUid = 'pioneer_preview_123';
+      const guestUsername = 'Pioneer_Preview';
+      const defaultUser = createPioneerUser(guestUsername, guestUid, 150, 150, 25);
+      
+      setUser(defaultUser);
+      setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
+      setAuthStatus('authenticated');
+      setAuthMessage('Live TV Preview Mode');
+
+      // Check server admin status for preview authorization
+      fetchServerAdminStatus(devToken).then((serverAdmin) => {
+        setIsAdmin(serverAdmin);
+      }).catch(() => {
+        setIsAdmin(false);
+      }).finally(() => {
+        setLoading(false);
+      });
+      return;
+    }
 
     try {
       const sdkLoaded = await loadPiSDKScript();
 
       if (!sdkLoaded || typeof window.Pi === 'undefined') {
-        if (isLocalDevPreviewAllowed) {
-          console.warn('[Dev Mode] Pi SDK unavailable outside Pi Browser. Using gated Dev Preview Pioneer.');
-          setIsDevPreview(true);
-          setPiAccessToken('dev_preview_token');
-          
-          const devUid = 'dev_preview_uid_123';
-          const devUsername = 'Dev_Pioneer_Preview';
-          const serverBal = await fetchServerBalance('dev_preview_token');
-
-          const devUser = createPioneerUser(devUsername, devUid, serverBal.totalCoins, serverBal.lifetimeEarnings, serverBal.dailyCoinsEarned);
-          setUser(devUser);
-          setAuthStatus('authenticated');
-          setAuthMessage('Development Preview Mode');
-          setLoading(false);
-          return;
-        }
-
-        console.warn('[Pi Auth] Pi SDK not available. Production rejected fake authentication.');
         setUser(null);
         setPiAccessToken(null);
         setIsDevPreview(false);
@@ -366,28 +360,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const isTimedOut = errMsg.includes('timed out') || errMsg.includes('Messaging promise');
       console.warn('[Pi Auth] Authentication note:', errMsg);
 
-      if (isLocalDevPreviewAllowed) {
-        console.warn('[Dev Mode] Pi Auth failed, falling back to Dev Preview in local environment only.');
-        setIsDevPreview(true);
-        setPiAccessToken('dev_preview_token');
-        const devUid = 'dev_preview_uid_123';
-        const devUsername = 'Dev_Pioneer_Preview';
-        const [serverBal, serverPrem, serverAdmin] = await Promise.all([
-          fetchServerBalance('dev_preview_token'),
-          fetchServerPremiumStatus('dev_preview_token'),
-          fetchServerAdminStatus('dev_preview_token'),
-        ]);
-        const devUser = createPioneerUser(devUsername, devUid, serverBal.totalCoins, serverBal.lifetimeEarnings, serverBal.dailyCoinsEarned);
-        setUser(devUser);
-        setPremiumStatus(serverPrem);
-        setIsAdmin(serverAdmin);
-        AdManager.setPremiumStatus(serverPrem.active);
-        setAuthStatus('authenticated');
-        setAuthMessage('Development Preview Mode');
-        setLoading(false);
-        return;
-      }
-
       setUser(null);
       setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
       setIsAdmin(false);
@@ -406,8 +378,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [createPioneerUser]);
 
+  const authInitializedRef = useRef(false);
+
   useEffect(() => {
-    authenticateWithPiSDK();
+    if (!authInitializedRef.current) {
+      authInitializedRef.current = true;
+      authenticateWithPiSDK();
+    }
   }, [authenticateWithPiSDK]);
 
   const checkAdminStatus = useCallback(async (): Promise<boolean> => {

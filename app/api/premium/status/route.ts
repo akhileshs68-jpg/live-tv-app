@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin-db";
 import { verifyPiAccessToken } from "@/lib/pi-auth-verify";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/cors";
+import { verifyPiRC2OnChainSubscription } from "@/lib/pirc2-subscription-verifier";
 
 export async function OPTIONS(req: NextRequest) {
   return handleCorsOptions(req);
@@ -59,6 +60,27 @@ export async function GET(req: NextRequest) {
       const parsed = Date.parse(rawPremium.expiresAt);
       if (!isNaN(parsed)) {
         expiresAt = parsed;
+      }
+    }
+
+    // Check if user has on-chain PiRC2 subscription record to re-verify
+    const pirc2Sub = userData.pirc2Subscription;
+    if (pirc2Sub?.txid) {
+      try {
+        const onChainState = await verifyPiRC2OnChainSubscription({
+          txid: pirc2Sub.txid,
+          subscriberAddress: pirc2Sub.subscriberAddress,
+        });
+
+        if (onChainState.isVerified && onChainState.isActive) {
+          active = true;
+          plan = "premium";
+          if (onChainState.expiresAt) {
+            expiresAt = onChainState.expiresAt;
+          }
+        }
+      } catch (pirc2Err) {
+        console.warn("[Premium API] PiRC2 verification notice:", pirc2Err);
       }
     }
 
@@ -122,3 +144,4 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   return GET(req);
 }
+

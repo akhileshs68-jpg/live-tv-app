@@ -1,6 +1,14 @@
 // Referral System Manager - Handles unique codes, links, sharing, and tracking
 
 import type { Referral } from '@/lib/db-types';
+import { getAppBaseUrl, getReferralShareUrl, getSocialShareLinks } from '@/lib/share-utils';
+
+export const REFERRAL_REWARDS = {
+  REFERRER_BONUS: 100, // Coins earned by referrer when friend signs up
+  REFERRED_BONUS: 50,  // Bonus coins for new user who uses referral code
+  CONFIRMED_AFTER: 3,  // Days before referral is confirmed
+  MAX_TIER_LEVELS: 3,  // Maximum referral levels for future support
+} as const;
 
 export interface ReferralLink {
   code: string;
@@ -32,11 +40,12 @@ export function generateReferralCode(piUsername: string): string {
 }
 
 // Generate referral link from code
-export function generateReferralLink(code: string, appUrl: string = 'https://watchearn.app'): ReferralLink {
+export function generateReferralLink(code: string, appUrl?: string): ReferralLink {
+  const base = appUrl || getAppBaseUrl();
   return {
     code,
     shortCode: code.substring(0, 6),
-    url: `${appUrl}?ref=${code}`,
+    url: `${base}/?ref=${encodeURIComponent(code)}`,
     createdAt: new Date().toISOString(),
     clicks: 0,
     conversions: 0,
@@ -44,21 +53,17 @@ export function generateReferralLink(code: string, appUrl: string = 'https://wat
 }
 
 // Social media sharing URLs
-export function generateShareLinks(username: string, code: string, appUrl: string = 'https://watchearn.app'): {
+export function generateShareLinks(username: string, code: string, appUrl?: string): {
   telegram: string;
   whatsapp: string;
   facebook: string;
   twitter: string;
 } {
-  const referralUrl = `${appUrl}?ref=${code}`;
-  const text = `Join me on Watch & Earn and start earning coins! Use my referral code ${code}`;
+  const base = appUrl || getAppBaseUrl();
+  const referralUrl = `${base}/?ref=${encodeURIComponent(code)}`;
+  const text = `Join Pi Live TV to stream 150+ free live channels! Use my Pioneer invite code ${code}`;
 
-  return {
-    telegram: `https://t.me/share/url?url=${encodeURIComponent(referralUrl)}&text=${encodeURIComponent(text)}`,
-    whatsapp: `https://wa.me/?text=${encodeURIComponent(`${text}\n${referralUrl}`)}`,
-    facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(referralUrl)}`,
-    twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(referralUrl)}`,
-  };
+  return getSocialShareLinks(referralUrl, 'Pi Live TV', text);
 }
 
 // Track referral conversion
@@ -147,21 +152,16 @@ export function trackReferralClick(code: string): void {
 
 // Create shareable message templates
 export function getReferralMessage(code: string, platform: 'telegram' | 'whatsapp' | 'facebook' | 'twitter'): string {
-  const baseMessage = `Join me on Watch & Earn - a free app to watch live TV and earn coins!`;
+  const base = getAppBaseUrl();
+  const url = `${base}/?ref=${encodeURIComponent(code)}`;
+  const baseMessage = `Join Pi Live TV - Stream 150+ free live channels!`;
   
   const messages = {
-    telegram: `${baseMessage}\n\nUse my referral code: ${code}\nGet 50 free coins when you sign up!`,
-    whatsapp: `${baseMessage}\n\nUse my referral code: ${code}\nGet 50 free coins when you sign up!`,
-    facebook: `Check out Watch & Earn! I'm earning coins by watching live TV. Use code ${code} to join me!`,
-    twitter: `I'm earning coins on @WatchEarnApp! Use code ${code} to join and get 50 free coins!`,
+    telegram: `${baseMessage}\n\nUse my Pioneer code: ${code}\n${url}`,
+    whatsapp: `${baseMessage}\n\nUse my Pioneer code: ${code}\n${url}`,
+    facebook: `Watch free live TV on Pi Live TV! Use Pioneer code ${code}: ${url}`,
+    twitter: `Streaming 150+ live channels on Pi Live TV! Use Pioneer code ${code}: ${url}`,
   };
   
   return messages[platform];
 }
-
-export const REFERRAL_REWARDS = {
-  REFERRER_BONUS: 100, // Coins earned by referrer when friend signs up
-  REFERRED_BONUS: 50,  // Bonus coins for new user who uses referral code
-  CONFIRMED_AFTER: 3,  // Days before referral is confirmed
-  MAX_TIER_LEVELS: 3,  // Maximum referral levels for future support
-} as const;

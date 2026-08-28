@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PRODUCTS_CATALOG, WATCH_POINTS_UTILITIES } from "@/lib/products-catalog";
+import { WATCH_POINTS_UTILITIES } from "@/lib/products-catalog";
+import { getActiveProductsCatalog } from "@/lib/pricing-service";
 import { PI_NETWORK_CONFIG } from "@/lib/system-config";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/cors";
 
@@ -8,10 +9,12 @@ export async function OPTIONS(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const dynamicProducts = await getActiveProductsCatalog();
+
   const res = NextResponse.json({
     success: true,
     sandbox: PI_NETWORK_CONFIG.SANDBOX ?? false,
-    products: Object.values(PRODUCTS_CATALOG),
+    products: dynamicProducts,
     utilities: Object.values(WATCH_POINTS_UTILITIES),
   });
   return applyCorsHeaders(res, req);

@@ -325,26 +325,39 @@ export default function PremiumPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
               {products.map((prod) => {
                 const isPurchasing = purchasingProductId === prod.productId;
+                const isTestnetPlan = prod.productId === 'LIVE_TV_PREMIUM_MONTHLY';
+                const isFeatured = isTestnetPlan || prod.productId === 'premium_30d';
 
                 return (
                   <Card
                     key={prod.productId}
                     className={`bg-card border-border flex flex-col justify-between hover:border-amber-500/50 transition-all ${
-                      prod.productId === 'premium_30d' ? 'border-amber-500/60 shadow-md ring-1 ring-amber-500/20' : ''
+                      isFeatured ? 'border-amber-500/60 shadow-md ring-1 ring-amber-500/20' : ''
                     }`}
                   >
                     <CardHeader className="pb-3">
-                      {prod.productId === 'premium_30d' && (
+                      {isTestnetPlan ? (
+                        <div className="mb-2 flex items-center gap-1.5">
+                          <Badge className="bg-amber-500 text-black font-bold text-[10px] px-2 py-0.5">
+                            TESTNET PLAN
+                          </Badge>
+                          <Badge variant="outline" className="text-[10px] text-amber-400 border-amber-500/30">
+                            OFFICIAL
+                          </Badge>
+                        </div>
+                      ) : prod.productId === 'premium_30d' ? (
                         <div className="mb-2">
                           <Badge className="bg-amber-500 text-black font-bold text-[10px] px-2 py-0.5">
                             MOST POPULAR
                           </Badge>
                         </div>
-                      )}
+                      ) : null}
                       <CardTitle className="text-lg font-bold text-foreground">{prod.name}</CardTitle>
                       <div className="flex items-baseline gap-1 mt-1">
                         <span className="text-3xl font-extrabold text-amber-400">{prod.pricePi}</span>
-                        <span className="text-sm font-bold text-foreground">π</span>
+                        <span className="text-sm font-bold text-foreground">
+                          {isTestnetPlan ? 'Test-Pi' : 'π'}
+                        </span>
                         <span className="text-xs text-muted-foreground ml-1">/ {prod.durationDays} days</span>
                       </div>
                       <CardDescription className="text-xs text-muted-foreground mt-2 leading-relaxed">
@@ -360,11 +373,15 @@ export default function PremiumPage() {
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                          <span>Priority Watch Points</span>
+                          <span>Full Access to Premium Channels</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                          <span>Premium Pioneer Badge</span>
+                          <span>Priority Watch Points Multiplier</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span>Exclusive Pioneer VIP Badge</span>
                         </li>
                       </ul>
 
@@ -372,7 +389,7 @@ export default function PremiumPage() {
                         onClick={() => handlePiPayment(prod)}
                         disabled={Boolean(purchasingProductId)}
                         className={`w-full font-bold text-xs h-10 ${
-                          prod.productId === 'premium_30d'
+                          isFeatured
                             ? 'bg-amber-500 hover:bg-amber-600 text-black shadow-sm'
                             : 'bg-primary hover:bg-primary/90 text-primary-foreground'
                         }`}
@@ -383,7 +400,7 @@ export default function PremiumPage() {
                             Processing...
                           </span>
                         ) : (
-                          `Upgrade with ${prod.pricePi} π`
+                          `Subscribe (${prod.pricePi} ${isTestnetPlan ? 'Test-Pi' : 'π'})`
                         )}
                       </Button>
                     </CardContent>

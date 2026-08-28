@@ -2,7 +2,8 @@
 
 import React, { useState, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { generateShareLinks, getReferralMessage, REFERRAL_REWARDS } from '@/lib/referral-manager';
+import { generateShareLinks, REFERRAL_REWARDS } from '@/lib/referral-manager';
+import { getReferralShareUrl, copyTextToClipboard } from '@/lib/share-utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -18,19 +19,26 @@ export function ReferralDashboard() {
   if (!user) return null;
 
   const referralCode = user.referralCode;
-  const referralUrl = `https://watchearn.app?ref=${referralCode}`;
+  const referralUrl = getReferralShareUrl(referralCode);
   const shareLinks = generateShareLinks(user.piUsername, referralCode);
 
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(referralCode);
-    setCopied(true);
-    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-    copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+  const handleCopyCode = async () => {
+    const ok = await copyTextToClipboard(referralCode);
+    if (ok) {
+      setCopied(true);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+      toast.success('Pioneer code copied!');
+    }
   };
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(referralUrl);
-    toast.success('Link copied to clipboard!');
+  const handleCopyLink = async () => {
+    const ok = await copyTextToClipboard(referralUrl);
+    if (ok) {
+      toast.success('Invite link copied to clipboard!');
+    } else {
+      toast.error('Failed to copy link');
+    }
   };
 
   const handleShare = (platform: 'telegram' | 'whatsapp' | 'facebook' | 'twitter') => {

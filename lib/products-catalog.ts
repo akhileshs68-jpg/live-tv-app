@@ -1,6 +1,15 @@
 import { ProductCatalogItem, WatchPointUtilityItem } from '@/lib/db-types';
 
 export const PRODUCTS_CATALOG: Record<string, ProductCatalogItem> = {
+  LIVE_TV_PREMIUM_MONTHLY: {
+    productId: 'LIVE_TV_PREMIUM_MONTHLY',
+    name: 'Live TV Premium',
+    description: '30 days of complete ad-free live streaming, priority Watch Points rewards, and unlocked premium channels on Pi Testnet.',
+    pricePi: 0.25,
+    durationDays: 30,
+    plan: 'premium',
+    active: true,
+  },
   premium_7d: {
     productId: 'premium_7d',
     name: '7 Days Premium Pioneer',

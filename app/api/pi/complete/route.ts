@@ -2,18 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin-db";
 import { verifyPiAccessToken } from "@/lib/pi-auth-verify";
 import { PRODUCTS_CATALOG } from "@/lib/products-catalog";
+import { applyCorsHeaders, handleCorsOptions } from "@/lib/cors";
+
+export async function OPTIONS(req: NextRequest) {
+  return handleCorsOptions(req);
+}
 
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("Authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : null;
 
-  const verifiedUser = await verifyPiAccessToken(token);
+  const verifiedUser = await verifyPiAccessToken(token, req);
 
   if (!verifiedUser) {
-    return NextResponse.json(
+    const unauthRes = NextResponse.json(
       { success: false, error: "Unauthorized: Invalid or missing Pi Access Token" },
       { status: 401 }
     );
+    return applyCorsHeaders(unauthRes, req);
   }
 
   const { uid: piUserId, username: piUsername } = verifiedUser;
@@ -23,29 +29,32 @@ export async function POST(req: NextRequest) {
     const { paymentId, txid } = body;
 
     if (!paymentId || typeof paymentId !== "string") {
-      return NextResponse.json(
+      const badReqRes = NextResponse.json(
         { success: false, error: "Missing or invalid paymentId" },
         { status: 400 }
       );
+      return applyCorsHeaders(badReqRes, req);
     }
 
     const paymentRef = adminDb.collection("pi_payments").doc(paymentId);
     const paymentSnap = await paymentRef.get();
 
     if (!paymentSnap.exists) {
-      return NextResponse.json(
+      const notFoundRes = NextResponse.json(
         { success: false, error: "Payment record not found" },
         { status: 404 }
       );
+      return applyCorsHeaders(notFoundRes, req);
     }
 
     const paymentData = paymentSnap.data() || {};
 
     if (paymentData.piUserId && paymentData.piUserId !== piUserId) {
-      return NextResponse.json(
+      const forbiRes = NextResponse.json(
         { success: false, error: "Forbidden: Payment ownership mismatch" },
         { status: 403 }
       );
+      return applyCorsHeaders(forbiRes, req);
     }
 
     // SERVER-AUTHORITATIVE IDEMPOTENCY CHECK
@@ -53,7 +62,7 @@ export async function POST(req: NextRequest) {
     if (paymentData.status === "completed") {
       const userSnap = await adminDb.collection("users").doc(piUserId).get();
       const userData = userSnap.data() || {};
-      return NextResponse.json({
+      const idemRes = NextResponse.json({
         success: true,
         paymentId,
         status: "completed",
@@ -61,6 +70,7 @@ export async function POST(req: NextRequest) {
         message: "Payment already verified and completed previously.",
         premium: userData.premium || { active: true, plan: "premium" },
       });
+      return applyCorsHeaders(idemRes, req);
     }
 
     // Official Pi Platform API Completion call
@@ -88,8 +98,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Calculate entitlement duration
-    const productId = paymentData.productId || "premium_30d";
-    const product = PRODUCTS_CATALOG[productId] || PRODUCTS_CATALOG["premium_30d"];
+    const productId = paymentData.productId || "LIVE_TV_PREMIUM_MONTHLY";
+    const product = PRODUCTS_CATALOG[productId] || PRODUCTS_CATALOG["LIVE_TV_PREMIUM_MONTHLY"] || PRODUCTS_CATALOG["premium_30d"];
     const durationDays = product.durationDays || 30;
     const durationMs = durationDays * 24 * 60 * 60 * 1000;
 
@@ -160,18 +170,20 @@ export async function POST(req: NextRequest) {
       updatedAt: nowIso,
     });
 
-    return NextResponse.json({
+    const successRes = NextResponse.json({
       success: true,
       paymentId,
       status: "completed",
       message: `Premium granted for ${durationDays} days until ${new Date(newExpiresAt).toLocaleDateString()}`,
       premium: newPremiumState,
     });
+    return applyCorsHeaders(successRes, req);
   } catch (error: any) {
     console.error("[Pi Complete API] Error completing payment:", error);
-    return NextResponse.json(
+    const errRes = NextResponse.json(
       { success: false, error: error?.message || "Failed to complete payment" },
       { status: 500 }
     );
+    return applyCorsHeaders(errRes, req);
   }
 }

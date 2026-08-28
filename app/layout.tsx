@@ -4,6 +4,7 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { AppWrapper } from "@/components/app-wrapper";
 import { AuthProvider } from "@/lib/auth-context";
+import { ErrorBoundary } from "@/components/error-boundary";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -26,20 +27,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark bg-background" suppressHydrationWarning>
-      <head>
-        <style>{`
-html {
-  font-family: ${GeistSans.style.fontFamily};
-  --font-sans: ${GeistSans.variable};
-  --font-mono: ${GeistMono.variable};
-}
-        `}</style>
-      </head>
-      <body>
-        <AuthProvider>
-          <AppWrapper>{children}</AppWrapper>
-        </AuthProvider>
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable} dark bg-background`} suppressHydrationWarning>
+      <body className="font-sans antialiased" suppressHydrationWarning>
+        <ErrorBoundary>
+          <AuthProvider>
+            <AppWrapper>{children}</AppWrapper>
+          </AuthProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

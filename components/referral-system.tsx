@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Share2, Copy, Users, TrendingUp } from 'lucide-react';
 
+import { getReferralShareUrl, shareContent, copyTextToClipboard } from '@/lib/share-utils';
+
 interface Referral {
   id: string;
   referredUsername: string;
@@ -27,18 +29,21 @@ export function ReferralSystem() {
     { id: '3', referredUsername: 'user_def456', joinDate: '1 month ago', status: 'active', coinsEarned: 100 },
   ];
 
-  const handleCopyCode = () => {
+  const handleCopyCode = async () => {
     if (user?.referralCode) {
-      const referralLink = `https://watchearn.app?ref=${user.referralCode}`;
-      navigator.clipboard.writeText(referralLink);
-      setCopyStatus(true);
-      setTimeout(() => setCopyStatus(false), 2000);
+      const referralLink = getReferralShareUrl(user.referralCode);
+      const ok = await copyTextToClipboard(referralLink);
+      if (ok) {
+        setCopyStatus(true);
+        setTimeout(() => setCopyStatus(false), 2000);
+      }
     }
   };
 
   const handleShareWhatsApp = () => {
     if (user?.referralCode) {
-      const message = `Join Watch & Earn and get 50 free coins! Use my referral code: ${user.referralCode}`;
+      const referralLink = getReferralShareUrl(user.referralCode);
+      const message = `Join Pi Live TV to watch free live channels! Use my Pioneer code: ${user.referralCode}\n${referralLink}`;
       const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
       window.open(whatsappUrl, '_blank');
     }
@@ -46,8 +51,9 @@ export function ReferralSystem() {
 
   const handleShareTelegram = () => {
     if (user?.referralCode) {
-      const message = `Join Watch & Earn and get 50 free coins! Use my referral code: ${user.referralCode}`;
-      const telegramUrl = `https://t.me/share/url?url=watchearn.app&text=${encodeURIComponent(message)}`;
+      const referralLink = getReferralShareUrl(user.referralCode);
+      const message = `Join Pi Live TV to watch free live channels! Use my Pioneer code: ${user.referralCode}`;
+      const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent(message)}`;
       window.open(telegramUrl, '_blank');
     }
   };
