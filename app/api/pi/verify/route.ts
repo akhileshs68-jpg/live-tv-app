@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_URLS } from "@/lib/system-config";
+import { applyCorsHeaders, handleCorsOptions } from "@/lib/cors";
+
+export async function OPTIONS(req: NextRequest) {
+  return handleCorsOptions(req);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -7,9 +12,12 @@ export async function POST(req: NextRequest) {
     const { accessToken } = body;
 
     if (!accessToken || typeof accessToken !== "string") {
-      return NextResponse.json(
-        { verified: false, error: "Missing or invalid accessToken" },
-        { status: 400 }
+      return applyCorsHeaders(
+        NextResponse.json(
+          { verified: false, error: "Missing or invalid accessToken" },
+          { status: 400 }
+        ),
+        req
       );
     }
 
@@ -24,13 +32,16 @@ export async function POST(req: NextRequest) {
       if (piRes.ok) {
         const piData = await piRes.json();
         if (piData && (piData.uid || piData.username)) {
-          return NextResponse.json({
-            verified: true,
-            user: {
-              uid: piData.uid || piData.username,
-              username: piData.username || `Pioneer_${piData.uid?.substring(0, 6)}`,
-            },
-          });
+          return applyCorsHeaders(
+            NextResponse.json({
+              verified: true,
+              user: {
+                uid: piData.uid || piData.username,
+                username: piData.username || `Pioneer_${piData.uid?.substring(0, 6)}`,
+              },
+            }),
+            req
+          );
         }
       }
     } catch (err) {
@@ -51,13 +62,16 @@ export async function POST(req: NextRequest) {
         if (backendRes.ok) {
           const backendData = await backendRes.json();
           if (backendData && backendData.username) {
-            return NextResponse.json({
-              verified: true,
-              user: {
-                uid: backendData.id || backendData.username,
-                username: backendData.username,
-              },
-            });
+            return applyCorsHeaders(
+              NextResponse.json({
+                verified: true,
+                user: {
+                  uid: backendData.id || backendData.username,
+                  username: backendData.username,
+                },
+              }),
+              req
+            );
           }
         }
       } catch (err) {
@@ -66,15 +80,21 @@ export async function POST(req: NextRequest) {
     }
 
     // If both failed in production, token is invalid
-    return NextResponse.json(
-      { verified: false, error: "Token verification failed against Pi Platform API" },
-      { status: 401 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { verified: false, error: "Token verification failed against Pi Platform API" },
+        { status: 401 }
+      ),
+      req
     );
   } catch (error) {
     console.error("Error verifying Pi access token:", error);
-    return NextResponse.json(
-      { verified: false, error: "Internal server verification error" },
-      { status: 500 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { verified: false, error: "Internal server verification error" },
+        { status: 500 }
+      ),
+      req
     );
   }
 }

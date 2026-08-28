@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Crown, CheckCircle2, ShieldCheck, Zap, Tv, Coins, RefreshCw, ArrowLeft, Info, Lock, Loader2, AlertTriangle, Check, Sparkles } from 'lucide-react';
 import { ProductCatalogItem } from '@/lib/db-types';
 import { PI_NETWORK_CONFIG } from '@/lib/system-config';
+import { getApiUrl } from '@/lib/api-config';
 
 export default function PremiumPage() {
   const { user, premiumStatus, piAccessToken, syncPremiumStatus } = useAuth();
@@ -27,7 +28,7 @@ export default function PremiumPage() {
   useEffect(() => {
     const fetchCatalog = async () => {
       try {
-        const res = await fetch('/api/pi/products');
+        const res = await fetch(getApiUrl('/api/pi/products'));
         if (res.ok) {
           const data = await res.json();
           if (data && data.success && Array.isArray(data.products)) {
@@ -64,7 +65,7 @@ export default function PremiumPage() {
 
     try {
       // Step 1: Request payment specs from server
-      const prepareRes = await fetch('/api/pi/create-payment', {
+      const prepareRes = await fetch(getApiUrl('/api/pi/create-payment'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -98,7 +99,7 @@ export default function PremiumPage() {
           onReadyForServerApproval: async (paymentId: string) => {
             setPaymentStep('Server approving payment with Pi Network...');
             try {
-              const approveRes = await fetch('/api/pi/approve', {
+              const approveRes = await fetch(getApiUrl('/api/pi/approve'), {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -120,7 +121,7 @@ export default function PremiumPage() {
           onReadyForServerCompletion: async (paymentId: string, txid: string) => {
             setPaymentStep('Verifying blockchain transaction and granting Premium...');
             try {
-              const completeRes = await fetch('/api/pi/complete', {
+              const completeRes = await fetch(getApiUrl('/api/pi/complete'), {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -151,7 +152,7 @@ export default function PremiumPage() {
             setPaymentError('Payment was cancelled in Pi Wallet.');
 
             try {
-              await fetch('/api/pi/cancel', {
+              await fetch(getApiUrl('/api/pi/cancel'), {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',

@@ -17,6 +17,7 @@ import { useAuth } from "@/lib/auth-context"
 import { AdSlot } from "@/components/ads/ad-slot"
 import { PremiumPromptModal } from "@/components/premium-prompt-modal"
 import { checkChannelAccess } from "@/lib/subscription-service"
+import { getApiUrl } from "@/lib/api-config"
 
 export function ChannelList() {
   const { user } = useAuth()
@@ -47,7 +48,7 @@ export function ChannelList() {
   const fetchChannels = async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/channels")
+      const response = await fetch(getApiUrl("/api/channels"))
       if (response.ok) {
         const data = await response.json()
         if (data.channels && data.channels.length > 0) {

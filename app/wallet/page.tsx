@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Download, Copy, AlertCircle, Coins, Crown, ExternalLink, ShieldCheck, RefreshCw } from 'lucide-react';
 import { AdSlot } from '@/components/ads/ad-slot';
 import { PiPaymentRecord } from '@/lib/db-types';
+import { getApiUrl } from '@/lib/api-config';
 
 export default function WalletPage() {
   const { user, premiumStatus, piAccessToken, loading, syncServerBalance, syncPremiumStatus } = useAuth();
@@ -22,7 +23,7 @@ export default function WalletPage() {
   const fetchPayments = async () => {
     setLoadingPayments(true);
     try {
-      const res = await fetch('/api/pi/payment-status', {
+      const res = await fetch(getApiUrl('/api/pi/payment-status'), {
         headers: {
           'Authorization': `Bearer ${piAccessToken || ''}`,
         },

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Shield, Sparkles, Tv, Zap, CheckCircle2, Loader2 } from 'lucide-react';
 import { formatCoins } from '@/lib/reward-utils';
 import { useAuth } from '@/lib/auth-context';
+import { getApiUrl } from '@/lib/api-config';
 
 interface BenefitItem {
   id: string;
@@ -72,7 +73,7 @@ export function WatchPointsBenefitsCatalog({ userPoints }: { userPoints?: number
     setFeedback(null);
 
     try {
-      const res = await fetch('/api/rewards/redeem', {
+      const res = await fetch(getApiUrl('/api/rewards/redeem'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

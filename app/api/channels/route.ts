@@ -1,7 +1,12 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { parseM3U, filterIndianChannels } from "@/lib/m3u-parser"
 import { GLOBAL_CHANNELS } from "@/lib/global-channels"
+import { applyCorsHeaders, handleCorsOptions } from "@/lib/cors"
 import type { Channel } from "@/lib/types"
+
+export async function OPTIONS(req: NextRequest) {
+  return handleCorsOptions(req)
+}
 
 const M3U_URLS = [
   "https://iptv-org.github.io/iptv/countries/in.m3u",
@@ -17,17 +22,18 @@ let cachedResponse: {
 } | null = null
 let cacheTimestamp = 0
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const now = Date.now()
 
   // Return cached result if fresh
   if (cachedResponse && now - cacheTimestamp < CACHE_TTL_MS) {
-    return NextResponse.json(cachedResponse, {
+    const res = NextResponse.json(cachedResponse, {
       headers: {
         "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=86400",
         "X-Cache": "HIT",
       },
     })
+    return applyCorsHeaders(res, req)
   }
 
   try {
@@ -121,27 +127,29 @@ export async function GET() {
       cacheTimestamp = now
     }
 
-    return NextResponse.json(responsePayload, {
+    const res = NextResponse.json(responsePayload, {
       headers: {
         "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=86400",
         "X-Cache": "MISS",
       },
     })
+    return applyCorsHeaders(res, req)
   } catch (error) {
     console.error("Error fetching channels:", error)
 
     // Return stale cache if available
     if (cachedResponse) {
-      return NextResponse.json(cachedResponse, {
+      const res = NextResponse.json(cachedResponse, {
         headers: {
           "Cache-Control": "public, s-maxage=300",
           "X-Cache": "STALE",
         },
       })
+      return applyCorsHeaders(res, req)
     }
 
     // Fallback to static GLOBAL_CHANNELS
-    return NextResponse.json(
+    const res = NextResponse.json(
       {
         channels: GLOBAL_CHANNELS,
         total: GLOBAL_CHANNELS.length,
@@ -156,5 +164,6 @@ export async function GET() {
         },
       }
     )
+    return applyCorsHeaders(res, req)
   }
 }

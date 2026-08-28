@@ -1,15 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin-db";
 import { verifyAdminAuthorization } from "@/lib/admin-auth";
+import { applyCorsHeaders, handleCorsOptions } from "@/lib/cors";
 import type { OwnerAnalyticsReport } from "@/lib/types";
+
+export async function OPTIONS(req: NextRequest) {
+  return handleCorsOptions(req);
+}
 
 export async function GET(req: NextRequest) {
   const authResult = await verifyAdminAuthorization(req);
 
   if (!authResult.isAuthorized) {
-    return NextResponse.json(
-      { success: false, error: authResult.reason || "Unauthorized: Admin/Owner privileges required" },
-      { status: 403 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: authResult.reason || "Unauthorized: Admin/Owner privileges required" },
+        { status: 403 }
+      ),
+      req
     );
   }
 
@@ -146,15 +154,21 @@ export async function GET(req: NextRequest) {
       updatedAt: now,
     };
 
-    return NextResponse.json({
-      success: true,
-      report,
-    });
+    return applyCorsHeaders(
+      NextResponse.json({
+        success: true,
+        report,
+      }),
+      req
+    );
   } catch (error) {
     console.error("[AdminAnalytics] Failed to compile TRP report:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to generate analytics report" },
-      { status: 500 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: "Failed to generate analytics report" },
+        { status: 500 }
+      ),
+      req
     );
   }
 }

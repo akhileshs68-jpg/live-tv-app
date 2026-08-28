@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import type { CreatorProfile, CreatorChannel, CreatorVideo, CreatorPlaylist, ChannelSchedule } from '@/lib/db-types';
+import { getApiUrl } from '@/lib/api-config';
 import {
   Tv,
   Video,
@@ -77,10 +78,10 @@ export default function CreatorDashboardPage() {
       const authHeader = { Authorization: `Bearer ${piAccessToken || ''}` };
 
       const [profileRes, videosRes, playlistsRes, schedulesRes] = await Promise.all([
-        fetch('/api/creator/profile', { headers: authHeader }),
-        fetch('/api/creator/videos', { headers: authHeader }),
-        fetch('/api/creator/playlists', { headers: authHeader }),
-        fetch('/api/creator/schedules', { headers: authHeader }),
+        fetch(getApiUrl('/api/creator/profile'), { headers: authHeader }),
+        fetch(getApiUrl('/api/creator/videos'), { headers: authHeader }),
+        fetch(getApiUrl('/api/creator/playlists'), { headers: authHeader }),
+        fetch(getApiUrl('/api/creator/schedules'), { headers: authHeader }),
       ]);
 
       if (profileRes.ok) {
@@ -123,7 +124,7 @@ export default function CreatorDashboardPage() {
     setFeedback(null);
 
     try {
-      const res = await fetch('/api/creator/profile', {
+      const res = await fetch(getApiUrl('/api/creator/profile'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -163,7 +164,7 @@ export default function CreatorDashboardPage() {
     setFeedback(null);
 
     try {
-      const res = await fetch('/api/creator/videos', {
+      const res = await fetch(getApiUrl('/api/creator/videos'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -197,7 +198,7 @@ export default function CreatorDashboardPage() {
   // Delete Video
   const handleDeleteVideo = async (videoId: string) => {
     try {
-      const res = await fetch(`/api/creator/videos?videoId=${videoId}`, {
+      const res = await fetch(getApiUrl(`/api/creator/videos?videoId=${videoId}`), {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${piAccessToken || ''}` },
       });
@@ -215,7 +216,7 @@ export default function CreatorDashboardPage() {
   const handleAddPlaylist = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/creator/playlists', {
+      const res = await fetch(getApiUrl('/api/creator/playlists'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -250,7 +251,7 @@ export default function CreatorDashboardPage() {
       const startAtISO = new Date(newSchedule.startAt).toISOString();
       const endAtISO = new Date(new Date(newSchedule.startAt).getTime() + newSchedule.durationMinutes * 60 * 1000).toISOString();
 
-      const res = await fetch('/api/creator/schedules', {
+      const res = await fetch(getApiUrl('/api/creator/schedules'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

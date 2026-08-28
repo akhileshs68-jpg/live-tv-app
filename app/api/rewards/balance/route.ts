@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin-db";
 import { verifyPiAccessToken } from "@/lib/pi-auth-verify";
+import { applyCorsHeaders, handleCorsOptions } from "@/lib/cors";
+
+export async function OPTIONS(req: NextRequest) {
+  return handleCorsOptions(req);
+}
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("Authorization");
@@ -9,9 +14,12 @@ export async function GET(req: NextRequest) {
   const verifiedUser = await verifyPiAccessToken(token, req);
 
   if (!verifiedUser) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized: Invalid or missing Pi Access Token" },
-      { status: 401 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: "Unauthorized: Invalid or missing Pi Access Token" },
+        { status: 401 }
+      ),
+      req
     );
   }
 
@@ -34,7 +42,7 @@ export async function GET(req: NextRequest) {
         updatedAt: new Date().toISOString(),
       };
       await userRef.set(newUser);
-      return NextResponse.json({ success: true, ...newUser });
+      return applyCorsHeaders(NextResponse.json({ success: true, ...newUser }), req);
     }
 
     const userData = userSnap.data() || {};
@@ -50,21 +58,27 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({
-      success: true,
-      piUserId,
-      piUsername: userData.piUsername || piUsername,
-      totalCoins: userData.totalCoins || 0,
-      lifetimeEarnings: userData.lifetimeEarnings || 0,
-      dailyCoinsEarned,
-      dailyResetDate: todayStr,
-      lastHeartbeatAt: userData.lastHeartbeatAt || 0,
-    });
+    return applyCorsHeaders(
+      NextResponse.json({
+        success: true,
+        piUserId,
+        piUsername: userData.piUsername || piUsername,
+        totalCoins: userData.totalCoins || 0,
+        lifetimeEarnings: userData.lifetimeEarnings || 0,
+        dailyCoinsEarned,
+        dailyResetDate: todayStr,
+        lastHeartbeatAt: userData.lastHeartbeatAt || 0,
+      }),
+      req
+    );
   } catch (error) {
     console.error("Error fetching balance from Firestore Admin DB:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to retrieve balance from server database" },
-      { status: 500 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: "Failed to retrieve balance from server database" },
+        { status: 500 }
+      ),
+      req
     );
   }
 }

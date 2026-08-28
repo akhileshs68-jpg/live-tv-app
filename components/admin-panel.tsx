@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { getApiUrl } from '@/lib/api-config';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -57,7 +58,7 @@ export function AdminPanel() {
       if (piAccessToken) {
         headers['Authorization'] = `Bearer ${piAccessToken}`;
       }
-      const res = await fetch('/api/admin/analytics', { headers });
+      const res = await fetch(getApiUrl('/api/admin/analytics'), { headers });
       if (res.ok) {
         const data = await res.json();
         if (data && data.report) {

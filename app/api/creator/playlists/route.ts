@@ -1,16 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin-db";
 import { verifyPiAccessToken } from "@/lib/pi-auth-verify";
+import { applyCorsHeaders, handleCorsOptions } from "@/lib/cors";
+
+export async function OPTIONS(req: NextRequest) {
+  return handleCorsOptions(req);
+}
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("Authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : null;
 
-  const verifiedUser = await verifyPiAccessToken(token);
+  const verifiedUser = await verifyPiAccessToken(token, req);
   if (!verifiedUser) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized: Invalid or missing Pi Access Token" },
-      { status: 401 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: "Unauthorized: Invalid or missing Pi Access Token" },
+        { status: 401 }
+      ),
+      req
     );
   }
 
@@ -24,15 +32,21 @@ export async function GET(req: NextRequest) {
 
     const playlists = snapshot.docs.map((doc) => doc.data());
 
-    return NextResponse.json({
-      success: true,
-      playlists,
-    });
+    return applyCorsHeaders(
+      NextResponse.json({
+        success: true,
+        playlists,
+      }),
+      req
+    );
   } catch (error) {
     console.error("[Creator Playlists API] Error listing playlists:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to load creator playlists" },
-      { status: 500 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: "Failed to load creator playlists" },
+        { status: 500 }
+      ),
+      req
     );
   }
 }
@@ -41,11 +55,14 @@ export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("Authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : null;
 
-  const verifiedUser = await verifyPiAccessToken(token);
+  const verifiedUser = await verifyPiAccessToken(token, req);
   if (!verifiedUser) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized: Invalid or missing Pi Access Token" },
-      { status: 401 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: "Unauthorized: Invalid or missing Pi Access Token" },
+        { status: 401 }
+      ),
+      req
     );
   }
 
@@ -66,9 +83,12 @@ export async function POST(req: NextRequest) {
     const existingSnap = await playlistRef.get();
 
     if (existingSnap.exists && existingSnap.data()?.ownerPiUserId !== ownerPiUserId) {
-      return NextResponse.json(
-        { success: false, error: "Forbidden: You do not own this playlist" },
-        { status: 403 }
+      return applyCorsHeaders(
+        NextResponse.json(
+          { success: false, error: "Forbidden: You do not own this playlist" },
+          { status: 403 }
+        ),
+        req
       );
     }
 
@@ -86,15 +106,21 @@ export async function POST(req: NextRequest) {
 
     await playlistRef.set(playlistData, { merge: true });
 
-    return NextResponse.json({
-      success: true,
-      playlist: playlistData,
-    });
+    return applyCorsHeaders(
+      NextResponse.json({
+        success: true,
+        playlist: playlistData,
+      }),
+      req
+    );
   } catch (error) {
     console.error("[Creator Playlists API] Error saving playlist:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to save playlist metadata" },
-      { status: 500 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: "Failed to save playlist metadata" },
+        { status: 500 }
+      ),
+      req
     );
   }
 }
@@ -103,11 +129,14 @@ export async function DELETE(req: NextRequest) {
   const authHeader = req.headers.get("Authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : null;
 
-  const verifiedUser = await verifyPiAccessToken(token);
+  const verifiedUser = await verifyPiAccessToken(token, req);
   if (!verifiedUser) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized: Invalid or missing Pi Access Token" },
-      { status: 401 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: "Unauthorized: Invalid or missing Pi Access Token" },
+        { status: 401 }
+      ),
+      req
     );
   }
 
@@ -116,9 +145,12 @@ export async function DELETE(req: NextRequest) {
   const playlistId = searchParams.get("playlistId");
 
   if (!playlistId) {
-    return NextResponse.json(
-      { success: false, error: "Missing playlistId parameter" },
-      { status: 400 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: "Missing playlistId parameter" },
+        { status: 400 }
+      ),
+      req
     );
   }
 
@@ -127,27 +159,40 @@ export async function DELETE(req: NextRequest) {
     const snap = await playlistRef.get();
 
     if (!snap.exists) {
-      return NextResponse.json({ success: true, message: "Playlist already deleted" });
+      return applyCorsHeaders(
+        NextResponse.json({ success: true, message: "Playlist already deleted" }),
+        req
+      );
     }
 
     if (snap.data()?.ownerPiUserId !== ownerPiUserId) {
-      return NextResponse.json(
-        { success: false, error: "Forbidden: You do not own this playlist" },
-        { status: 403 }
+      return applyCorsHeaders(
+        NextResponse.json(
+          { success: false, error: "Forbidden: You do not own this playlist" },
+          { status: 403 }
+        ),
+        req
       );
     }
 
     await playlistRef.delete();
 
-    return NextResponse.json({
-      success: true,
-      message: "Playlist deleted successfully",
-    });
+    return applyCorsHeaders(
+      NextResponse.json({
+        success: true,
+        message: "Playlist deleted successfully",
+      }),
+      req
+    );
   } catch (error) {
     console.error("[Creator Playlists API] Error deleting playlist:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to delete playlist" },
-      { status: 500 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: "Failed to delete playlist" },
+        { status: 500 }
+      ),
+      req
     );
   }
 }
+

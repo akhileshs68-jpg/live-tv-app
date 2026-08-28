@@ -2,17 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin-db";
 import { verifyPiAccessToken } from "@/lib/pi-auth-verify";
 import { WATCH_POINTS_UTILITIES } from "@/lib/products-catalog";
+import { applyCorsHeaders, handleCorsOptions } from "@/lib/cors";
+
+export async function OPTIONS(req: NextRequest) {
+  return handleCorsOptions(req);
+}
 
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("Authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : null;
 
-  const verifiedUser = await verifyPiAccessToken(token);
+  const verifiedUser = await verifyPiAccessToken(token, req);
 
   if (!verifiedUser) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized: Invalid or missing Pi Access Token" },
-      { status: 401 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: "Unauthorized: Invalid or missing Pi Access Token" },
+        { status: 401 }
+      ),
+      req
     );
   }
 
@@ -23,9 +31,12 @@ export async function POST(req: NextRequest) {
     const { productId } = body;
 
     if (!productId || !WATCH_POINTS_UTILITIES[productId]) {
-      return NextResponse.json(
-        { success: false, error: "Invalid Watch Points utility item selected" },
-        { status: 400 }
+      return applyCorsHeaders(
+        NextResponse.json(
+          { success: false, error: "Invalid Watch Points utility item selected" },
+          { status: 400 }
+        ),
+        req
       );
     }
 
@@ -36,9 +47,12 @@ export async function POST(req: NextRequest) {
     const userSnap = await userRef.get();
 
     if (!userSnap.exists) {
-      return NextResponse.json(
-        { success: false, error: "User account not found" },
-        { status: 404 }
+      return applyCorsHeaders(
+        NextResponse.json(
+          { success: false, error: "User account not found" },
+          { status: 404 }
+        ),
+        req
       );
     }
 
@@ -46,12 +60,15 @@ export async function POST(req: NextRequest) {
     const currentCoins = userData.totalCoins || 0;
 
     if (currentCoins < pointsCost) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Insufficient Watch Points balance. Required: ${pointsCost}, Available: ${currentCoins}`,
-        },
-        { status: 400 }
+      return applyCorsHeaders(
+        NextResponse.json(
+          {
+            success: false,
+            error: `Insufficient Watch Points balance. Required: ${pointsCost}, Available: ${currentCoins}`,
+          },
+          { status: 400 }
+        ),
+        req
       );
     }
 
@@ -134,22 +151,28 @@ export async function POST(req: NextRequest) {
       updatedAt: nowIso,
     });
 
-    return NextResponse.json({
-      success: true,
-      redemptionId,
-      productId,
-      newTotalCoins: newCoins,
-      message: `Successfully redeemed ${utility.name}!`,
-      entitlement: {
-        type: utility.type,
-        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : "Lifetime",
-      },
-    });
+    return applyCorsHeaders(
+      NextResponse.json({
+        success: true,
+        redemptionId,
+        productId,
+        newTotalCoins: newCoins,
+        message: `Successfully redeemed ${utility.name}!`,
+        entitlement: {
+          type: utility.type,
+          expiresAt: expiresAt ? new Date(expiresAt).toISOString() : "Lifetime",
+        },
+      }),
+      req
+    );
   } catch (error: any) {
     console.error("[Redeem Watch Points API] Error processing redemption:", error);
-    return NextResponse.json(
-      { success: false, error: error?.message || "Failed to redeem Watch Points" },
-      { status: 500 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: error?.message || "Failed to redeem Watch Points" },
+        { status: 500 }
+      ),
+      req
     );
   }
 }

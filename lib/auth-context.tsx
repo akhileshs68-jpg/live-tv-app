@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { PI_NETWORK_CONFIG } from '@/lib/system-config';
+import { getApiUrl } from '@/lib/api-config';
 import type { User, PremiumEntitlement } from '@/lib/db-types';
 import { AdManager } from '@/lib/ads/ad-manager';
 
@@ -118,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
     try {
-      const res = await fetch('/api/admin/verify', {
+      const res = await fetch(getApiUrl('/api/admin/verify'), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -150,7 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { active: false, plan: 'free', expiresAt: null };
     }
     try {
-      const res = await fetch('/api/premium/status', {
+      const res = await fetch(getApiUrl('/api/premium/status'), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -177,7 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { totalCoins: 0, lifetimeEarnings: 0, dailyCoinsEarned: 0 };
     }
     try {
-      const res = await fetch('/api/rewards/balance', {
+      const res = await fetch(getApiUrl('/api/rewards/balance'), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -222,7 +223,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const verifyTokenWithServer = async (token: string): Promise<{ uid: string; username: string } | null> => {
     try {
-      const res = await fetch('/api/pi/verify', {
+      const res = await fetch(getApiUrl('/api/pi/verify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accessToken: token }),
@@ -335,14 +336,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthMessage('Verifying identity with server...');
       const verifiedUser = await verifyTokenWithServer(token);
 
-      const finalUid = verifiedUser?.uid || clientUser?.uid;
-      const finalUsername = verifiedUser?.username || clientUser?.username;
-
-      if (!finalUid || !finalUsername) {
-        throw new Error('Could not verify Pioneer identity.');
+      if (!verifiedUser || !verifiedUser.uid) {
+        throw new Error('Authentication server verification failed. Please check your network or try again.');
       }
 
-      console.log('[Pi Auth] Verified Pioneer identity:', { finalUid, finalUsername });
+      const finalUid = verifiedUser.uid;
+      const finalUsername = verifiedUser.username || clientUser?.username || `Pioneer_${finalUid.substring(0, 6)}`;
+
+      console.log('[Pi Auth] Verified canonical Pioneer identity:', { finalUid, finalUsername });
 
       // Fetch server-authoritative balance, premium status, and admin status from Firestore
       const [serverBal, serverPrem, serverAdmin] = await Promise.all([

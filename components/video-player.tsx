@@ -27,6 +27,7 @@ import {
 import type { Channel } from "@/lib/types"
 import { useFavorites } from "@/hooks/use-favorites"
 import { useAuth } from "@/lib/auth-context"
+import { getApiUrl } from "@/lib/api-config"
 
 interface VideoPlayerProps {
   channel: Channel
@@ -376,7 +377,7 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
             return
           }
 
-          const res = await fetch("/api/rewards/heartbeat", {
+          const res = await fetch(getApiUrl("/api/rewards/heartbeat"), {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

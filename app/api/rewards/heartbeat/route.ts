@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin-db";
 import { verifyPiAccessToken } from "@/lib/pi-auth-verify";
+import { applyCorsHeaders, handleCorsOptions } from "@/lib/cors";
+
+export async function OPTIONS(req: NextRequest) {
+  return handleCorsOptions(req);
+}
 
 const REWARD_PER_INTERVAL = 2; // Fixed +2 Watch Points per 30 verified seconds
 const MIN_ANTI_SPAM_INTERVAL_MS = 20000; // 20s anti-spam window
@@ -16,9 +21,12 @@ export async function POST(req: NextRequest) {
     const verifiedUser = await verifyPiAccessToken(token, req);
 
     if (!verifiedUser) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized: Invalid or missing Pi Access Token" },
-        { status: 401 }
+      return applyCorsHeaders(
+        NextResponse.json(
+          { success: false, error: "Unauthorized: Invalid or missing Pi Access Token" },
+          { status: 401 }
+        ),
+        req
       );
     }
 
@@ -175,19 +183,25 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      coinsAwarded,
-      totalCoins: updatedTotalCoins,
-      lifetimeEarnings: updatedLifetimeEarnings,
-      dailyCoinsEarned: updatedDailyCoinsEarned,
-      message: statusMessage,
-    });
+    return applyCorsHeaders(
+      NextResponse.json({
+        success: true,
+        coinsAwarded,
+        totalCoins: updatedTotalCoins,
+        lifetimeEarnings: updatedLifetimeEarnings,
+        dailyCoinsEarned: updatedDailyCoinsEarned,
+        message: statusMessage,
+      }),
+      req
+    );
   } catch (error) {
     console.error("Error processing server reward heartbeat:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to record Watch Points heartbeat" },
-      { status: 500 }
+    return applyCorsHeaders(
+      NextResponse.json(
+        { success: false, error: "Failed to record Watch Points heartbeat" },
+        { status: 500 }
+      ),
+      req
     );
   }
 }
