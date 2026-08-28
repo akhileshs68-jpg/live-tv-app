@@ -19,13 +19,20 @@ let cacheTimestamp = 0
 
 async function getChannelOverrides(): Promise<Record<string, 'FREE' | 'PREMIUM' | 'DISABLED'>> {
   try {
-    const snap = await adminDb.collection("system_config").doc("channel_access").get();
-    if (snap.exists) {
-      const data = snap.data();
-      if (data && data.overrides && typeof data.overrides === 'object') {
-        return data.overrides;
+    const timeoutPromise = new Promise<Record<string, 'FREE' | 'PREMIUM' | 'DISABLED'>>((resolve) => {
+      setTimeout(() => resolve({}), 1500);
+    });
+    const fetchPromise = (async () => {
+      const snap = await adminDb.collection("system_config").doc("channel_access").get();
+      if (snap.exists) {
+        const data = snap.data();
+        if (data && data.overrides && typeof data.overrides === 'object') {
+          return data.overrides;
+        }
       }
-    }
+      return {};
+    })();
+    return await Promise.race([fetchPromise, timeoutPromise]);
   } catch (err) {
     // Non-blocking fallback
   }

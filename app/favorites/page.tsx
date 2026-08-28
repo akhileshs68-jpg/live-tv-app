@@ -197,7 +197,7 @@ export default function FavoritesPage() {
       )}
 
       {/* Video Player */}
-      {playingChannel && <VideoPlayer channel={playingChannel} onClose={() => setPlayingChannel(null)} />}
+      {playingChannel && <VideoPlayer key={playingChannel.id} channel={playingChannel} onClose={() => setPlayingChannel(null)} />}
     </>
   )
 }

@@ -10,13 +10,21 @@ import { useAuth } from '@/lib/auth-context';
 export function Navigation() {
   const pathname = usePathname();
   const { user, isAdmin } = useAuth();
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const showAdmin = mounted && isAdmin;
+  const userLabel = mounted && user?.piUsername ? `@${user.piUsername.slice(0, 6)}` : 'Pi';
 
   const mobileNavItems = [
     { href: '/', label: 'Home', icon: Home },
     { href: '/watch', label: 'Live', icon: Tv },
     { href: '/favorites', label: 'Saved', icon: Heart },
-    ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Shield }] : []),
-    { href: '/settings', label: user?.piUsername ? `@${user.piUsername.slice(0, 6)}` : 'Pi', icon: User },
+    ...(showAdmin ? [{ href: '/admin', label: 'Admin', icon: Shield }] : []),
+    { href: '/settings', label: userLabel, icon: User },
   ];
 
   return (
@@ -57,6 +65,13 @@ export function Navigation() {
 export function DesktopNavigation() {
   const pathname = usePathname();
   const { isAdmin } = useAuth();
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const showAdmin = mounted && isAdmin;
 
   const navItems = [
     { href: '/', label: 'Home', icon: Home },
@@ -68,7 +83,7 @@ export function DesktopNavigation() {
     { href: '/wallet', label: 'Wallet', icon: Wallet },
     { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
     { href: '/referral', label: 'Referral', icon: Users },
-    ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Shield }] : []),
+    ...(showAdmin ? [{ href: '/admin', label: 'Admin', icon: Shield }] : []),
   ];
 
   return (

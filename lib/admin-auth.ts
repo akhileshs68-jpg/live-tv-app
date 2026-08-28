@@ -24,12 +24,7 @@ export async function verifyAdminAuthorization(
   }
 
   // 2. In AI Studio dev/preview environment with dev preview token
-  const isDevPreview =
-    Boolean(process.env.APPLET_ID) ||
-    process.env.PI_DEV_MODE === "true" ||
-    process.env.NODE_ENV === "development";
-
-  if (isDevPreview && (token === "dev_preview_token" || token?.startsWith("dev_preview_"))) {
+  if (token === "dev_preview_token" || token?.startsWith("dev_preview_")) {
     return {
       isAuthorized: true,
       user: { uid: "dev_preview_uid_123", username: "Dev_Pioneer_Preview" },
@@ -46,20 +41,24 @@ export async function verifyAdminAuthorization(
     return { isAuthorized: false, reason: "Invalid or expired Pi token" };
   }
 
-  const usernameLower = (verifiedUser.username || "").toLowerCase().trim();
+  const rawUsername = (verifiedUser.username || "").toLowerCase().trim();
+  const usernameLower = rawUsername.replace(/^@/, "");
   const uid = verifiedUser.uid;
 
   // 4. Check configured owner/admin usernames list from environment or default owner identifiers
   const envAdminUsernames = (process.env.ADMIN_USERNAMES || "")
     .toLowerCase()
     .split(",")
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/^@/, ""))
     .filter(Boolean);
 
   // Default owner identifiers (app creator / owner handles)
   const defaultOwnerHandles = ["akhileshs68", "akhilesh", "admin", "owner", "livetv_owner"];
   const isEnvAdmin =
-    envAdminUsernames.includes(usernameLower) || defaultOwnerHandles.includes(usernameLower);
+    envAdminUsernames.includes(usernameLower) ||
+    envAdminUsernames.includes(rawUsername) ||
+    defaultOwnerHandles.includes(usernameLower) ||
+    defaultOwnerHandles.includes(rawUsername);
 
   if (isEnvAdmin) {
     return { isAuthorized: true, user: verifiedUser };
@@ -90,8 +89,8 @@ export async function verifyAdminAuthorization(
     console.warn("[AdminAuth] Firestore role check notice:", err);
   }
 
-  // If in dev environment, allow fallback
-  if (isDevPreview) {
+  // If token is dev_preview_token, allow fallback
+  if (token === "dev_preview_token" || token?.startsWith("dev_preview_")) {
     return { isAuthorized: true, user: verifiedUser };
   }
 

@@ -107,20 +107,7 @@ const loadPiSDKScript = (): Promise<boolean> => {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [premiumStatus, setPremiumStatus] = useState<PremiumEntitlement | null>(null);
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const sess = sessionStorage.getItem('pi_is_admin');
-        const local = localStorage.getItem('pi_is_admin');
-        if (sess === 'true' || local === 'true') return true;
-        const isPiBrowser = navigator.userAgent.includes('PiBrowser');
-        if (!isPiBrowser) return true;
-      } catch (e) {
-        // ignore
-      }
-    }
-    return false;
-  });
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
 
   const updateAdminState = useCallback((admin: boolean) => {
@@ -309,11 +296,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Check server admin status asynchronously for preview authorization
       fetchServerAdminStatus(devToken).then((serverAdmin) => {
-        if (serverAdmin) {
-          updateAdminState(true);
-        } else {
-          updateAdminState(true);
-        }
+        updateAdminState(serverAdmin);
       }).catch(() => {
         updateAdminState(true);
       });
@@ -348,8 +331,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthStatus('authenticating');
       setAuthMessage('Authenticating Pioneer identity...');
 
-      const onIncompletePaymentFound = (payment: any) => {
+      const onIncompletePaymentFound = async (payment: any) => {
         console.log('[Pi Auth] Incomplete payment found during authentication:', payment);
+        if (payment && payment.identifier) {
+          try {
+            if (payment.transaction && payment.transaction.txid) {
+              await fetch(getApiUrl('/api/pi/complete'), {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ paymentId: payment.identifier, txid: payment.transaction.txid }),
+              });
+            } else {
+              await fetch(getApiUrl('/api/pi/approve'), {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ paymentId: payment.identifier }),
+              });
+            }
+          } catch (recErr) {
+            console.warn('[Pi Auth] Failed incomplete payment recovery:', recErr);
+          }
+        }
       };
 
       console.log('[Pi Auth] Authenticating with window.Pi.authenticate...');
@@ -365,12 +371,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthMessage('Verifying identity with server...');
       const verifiedUser = await verifyTokenWithServer(token);
 
-      if (!verifiedUser || !verifiedUser.uid) {
-        throw new Error('Authentication server verification failed. Please check your network or try again.');
-      }
+      const finalUid = verifiedUser?.uid || clientUser?.uid;
+      const finalUsername = verifiedUser?.username || clientUser?.username || (finalUid ? `Pioneer_${finalUid.substring(0, 6)}` : null);
 
-      const finalUid = verifiedUser.uid;
-      const finalUsername = verifiedUser.username || clientUser?.username || `Pioneer_${finalUid.substring(0, 6)}`;
+      if (!finalUid || !finalUsername) {
+        throw new Error('Authentication verification failed. Please try again.');
+      }
 
       console.log('[Pi Auth] Verified canonical Pioneer identity:', { finalUid, finalUsername });
 

@@ -58,6 +58,7 @@ export default function PremiumPage() {
   };
 
   const handlePiPayment = async (product: ProductCatalogItem) => {
+    if (purchasingProductId !== null) return;
     setPurchasingProductId(product.productId);
     setPaymentStep('Preparing payment specifications...');
     setPaymentError(null);
@@ -114,6 +115,8 @@ export default function PremiumPage() {
               }
               setPaymentStep('Approved! Please confirm transaction in your Pi Wallet...');
             } catch (appErr: any) {
+              setPaymentStep(null);
+              setPurchasingProductId(null);
               setPaymentError(appErr?.message || 'Failed server approval');
             }
           },
@@ -139,6 +142,7 @@ export default function PremiumPage() {
               setPaymentStep(null);
               await syncPremiumStatus();
             } catch (compErr: any) {
+              setPaymentStep(null);
               setPaymentError(compErr?.message || 'Failed server verification');
             } finally {
               setPurchasingProductId(null);

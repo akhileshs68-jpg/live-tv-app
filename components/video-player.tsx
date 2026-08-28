@@ -343,29 +343,38 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
 
       // Native playback for Safari / direct video format
       if (video.canPlayType("application/vnd.apple.mpegurl") || !isHls) {
-        video.src = activeStreamUrl
-        video.load()
-        const playPromise = video.play()
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              if (!isCancelled) {
-                setPlayerState("playing")
-                setErrorMsg(null)
-              }
-            })
-            .catch((err) => {
-              console.log("[StreamEngine] Native play note:", err)
-              if (!isCancelled) {
-                video.muted = true
-                setIsMuted(true)
-                video.play().then(() => {
-                  if (!isCancelled) setPlayerState("playing")
-                }).catch(() => {
-                  if (!isCancelled) setPlayerState("paused")
-                })
-              }
-            })
+        try {
+          video.src = activeStreamUrl
+          video.load()
+          const playPromise = video.play()
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                if (!isCancelled) {
+                  setPlayerState("playing")
+                  setErrorMsg(null)
+                }
+              })
+              .catch((err) => {
+                console.log("[StreamEngine] Native play note:", err)
+                if (!isCancelled) {
+                  video.muted = true
+                  setIsMuted(true)
+                  try {
+                    video.play().then(() => {
+                      if (!isCancelled) setPlayerState("playing")
+                    }).catch(() => {
+                      if (!isCancelled) setPlayerState("paused")
+                    })
+                  } catch (e) {
+                    if (!isCancelled) setPlayerState("paused")
+                  }
+                }
+              })
+          }
+        } catch (nativeErr) {
+          console.warn("[StreamEngine] Native video setup exception:", nativeErr)
+          switchToNextCandidateOrFallback("Native video playback exception")
         }
       } else {
         switchToNextCandidateOrFallback("HLS unsupported natively")
