@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Tv, Heart, User, Trophy, Wallet, Users, Globe, Youtube, Bookmark } from 'lucide-react';
+import { Home, Tv, Heart, User, Trophy, Wallet, Users, Globe, Youtube, Bookmark, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 
@@ -55,6 +55,7 @@ export function Navigation() {
 
 export function DesktopNavigation() {
   const pathname = usePathname();
+  const { isAdmin } = useAuth();
 
   const navItems = [
     { href: '/', label: 'Home', icon: Home },
@@ -66,6 +67,7 @@ export function DesktopNavigation() {
     { href: '/wallet', label: 'Wallet', icon: Wallet },
     { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
     { href: '/referral', label: 'Referral', icon: Users },
+    ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Shield }] : []),
   ];
 
   return (

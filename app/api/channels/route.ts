@@ -82,6 +82,9 @@ export async function GET() {
 
     // Combine IPTV channels with curated Global fallback channels
     const allChannelsCombinedMap = new Map<string, Channel>()
+    const curatedNormalizedNames = new Set(
+      GLOBAL_CHANNELS.map((ch) => ch.name.toLowerCase().replace(/[^a-z0-9]/g, ""))
+    )
 
     // Add curated GLOBAL_CHANNELS first to guarantee premium fallback quality
     GLOBAL_CHANNELS.forEach((ch) => {
@@ -90,9 +93,15 @@ export async function GET() {
       }
     })
 
-    // Add IPTV channels (won't overwrite curated global channels with same ID)
+    // Add IPTV channels (skip duplicates and those that match curated channels)
     iptvChannels.forEach((ch) => {
-      if (ch && ch.id && !allChannelsCombinedMap.has(ch.id)) {
+      if (!ch || !ch.id || !ch.url) return
+      if (!ch.url.startsWith("http://") && !ch.url.startsWith("https://")) return
+
+      const normName = (ch.name || "").toLowerCase().replace(/[^a-z0-9]/g, "")
+      if (curatedNormalizedNames.has(normName)) return
+
+      if (!allChannelsCombinedMap.has(ch.id)) {
         allChannelsCombinedMap.set(ch.id, ch)
       }
     })

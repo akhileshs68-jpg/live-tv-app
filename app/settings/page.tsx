@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { User, Settings, Bell, Shield, LogOut } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { user, premiumStatus, loading, logout } = useAuth();
+  const { user, premiumStatus, isAdmin, loading, logout } = useAuth();
   const [saveSuccess, setSaveSuccess] = useState(false);
   const isPremium = Boolean(premiumStatus?.active);
 
@@ -195,6 +195,25 @@ export default function SettingsPage() {
                     </a>
                   </Button>
                 </div>
+
+                {isAdmin && (
+                  <div className="flex items-center justify-between p-3 bg-amber-500/10 rounded-lg border border-amber-500/30">
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-bold text-amber-400">Owner & Admin Dashboard</p>
+                        <Badge className="bg-amber-500/20 text-amber-400 text-[10px] py-0 px-1.5 font-mono">
+                          TRP & ANALYTICS
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Live TRP audience stats, channel management, and telemetry</p>
+                    </div>
+                    <Button asChild size="sm" className="bg-amber-500 hover:bg-amber-600 text-black font-bold">
+                      <a href="/admin">
+                        Open Admin
+                      </a>
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

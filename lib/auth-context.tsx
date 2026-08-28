@@ -54,6 +54,7 @@ interface AuthContextType {
   premiumStatus: PremiumEntitlement | null;
   loading: boolean;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   authStatus: AuthStatus;
   authMessage: string;
   piAccessToken: string | null;
@@ -62,6 +63,7 @@ interface AuthContextType {
   updateUserCoins: (amount: number) => void;
   syncServerBalance: (explicitBalance?: { totalCoins?: number; dailyCoinsEarned?: number; lifetimeEarnings?: number }) => Promise<void>;
   syncPremiumStatus: () => Promise<void>;
+  checkAdminStatus: () => Promise<boolean>;
   addTransaction: (type: string, amount: number, reason: string) => Promise<void>;
   addReward: (reward: RewardEvent) => void;
   generateReferralCode: (piUsername?: string) => string;
@@ -104,11 +106,33 @@ const loadPiSDKScript = (): Promise<boolean> => {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [premiumStatus, setPremiumStatus] = useState<PremiumEntitlement | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [authStatus, setAuthStatus] = useState<AuthStatus>('idle');
   const [authMessage, setAuthMessage] = useState('Initializing Pi Network...');
   const [piAccessToken, setPiAccessToken] = useState<string | null>(null);
   const [isDevPreview, setIsDevPreview] = useState(false);
+
+  const fetchServerAdminStatus = async (token: string | null): Promise<boolean> => {
+    if (!token) {
+      return false;
+    }
+    try {
+      const res = await fetch('/api/admin/verify', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return Boolean(data && data.success && data.isAdmin);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch server admin status:', err);
+    }
+    return false;
+  };
 
   const generateReferralCode = useCallback((piUsername?: string) => {
     const name = piUsername || user?.piUsername || 'USR';
@@ -320,15 +344,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('[Pi Auth] Verified Pioneer identity:', { finalUid, finalUsername });
 
-      // Fetch server-authoritative balance and premium status from Firestore
-      const [serverBal, serverPrem] = await Promise.all([
+      // Fetch server-authoritative balance, premium status, and admin status from Firestore
+      const [serverBal, serverPrem, serverAdmin] = await Promise.all([
         fetchServerBalance(token),
         fetchServerPremiumStatus(token),
+        fetchServerAdminStatus(token),
       ]);
       const authenticatedUser = createPioneerUser(finalUsername, finalUid, serverBal.totalCoins, serverBal.lifetimeEarnings, serverBal.dailyCoinsEarned);
 
       setUser(authenticatedUser);
       setPremiumStatus(serverPrem);
+      setIsAdmin(serverAdmin);
       AdManager.setPremiumStatus(serverPrem.active);
       setPiAccessToken(token);
       setIsDevPreview(false);
@@ -345,13 +371,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setPiAccessToken('dev_preview_token');
         const devUid = 'dev_preview_uid_123';
         const devUsername = 'Dev_Pioneer_Preview';
-        const [serverBal, serverPrem] = await Promise.all([
+        const [serverBal, serverPrem, serverAdmin] = await Promise.all([
           fetchServerBalance('dev_preview_token'),
           fetchServerPremiumStatus('dev_preview_token'),
+          fetchServerAdminStatus('dev_preview_token'),
         ]);
         const devUser = createPioneerUser(devUsername, devUid, serverBal.totalCoins, serverBal.lifetimeEarnings, serverBal.dailyCoinsEarned);
         setUser(devUser);
         setPremiumStatus(serverPrem);
+        setIsAdmin(serverAdmin);
         AdManager.setPremiumStatus(serverPrem.active);
         setAuthStatus('authenticated');
         setAuthMessage('Development Preview Mode');
@@ -361,6 +389,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(null);
       setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
+      setIsAdmin(false);
       AdManager.setPremiumStatus(false);
       setPiAccessToken(null);
       setIsDevPreview(false);
@@ -379,6 +408,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     authenticateWithPiSDK();
   }, [authenticateWithPiSDK]);
+
+  const checkAdminStatus = useCallback(async (): Promise<boolean> => {
+    const admin = await fetchServerAdminStatus(piAccessToken);
+    setIsAdmin(admin);
+    return admin;
+  }, [piAccessToken]);
 
   const syncServerBalance = useCallback(
     async (explicitBalance?: { totalCoins?: number; dailyCoinsEarned?: number; lifetimeEarnings?: number }) => {
@@ -450,6 +485,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setUser(null);
     setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
+    setIsAdmin(false);
     AdManager.setPremiumStatus(false);
     setPiAccessToken(null);
     setAuthStatus('unauthenticated');
@@ -463,6 +499,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         premiumStatus,
         loading,
         isAuthenticated: authStatus === 'authenticated',
+        isAdmin,
         authStatus,
         authMessage,
         piAccessToken,
@@ -471,6 +508,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateUserCoins,
         syncServerBalance,
         syncPremiumStatus,
+        checkAdminStatus,
         addTransaction,
         addReward,
         generateReferralCode,

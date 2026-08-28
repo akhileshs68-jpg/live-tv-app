@@ -15,6 +15,8 @@ import { COUNTRIES, GLOBAL_CHANNELS } from "@/lib/global-channels"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { useAuth } from "@/lib/auth-context"
 import { AdSlot } from "@/components/ads/ad-slot"
+import { PremiumPromptModal } from "@/components/premium-prompt-modal"
+import { checkChannelAccess } from "@/lib/subscription-service"
 
 export function ChannelList() {
   const { user } = useAuth()
@@ -24,9 +26,19 @@ export function ChannelList() {
   const [selectedCategory, setSelectedCategory] = useState<string>("All")
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
   const [playingChannel, setPlayingChannel] = useState<Channel | null>(null)
+  const [premiumPromptChannel, setPremiumPromptChannel] = useState<Channel | null>(null)
   const [viewMode, setViewMode] = useState<"channels" | "countries">("channels")
   const [selectedCountry, setSelectedCountry] = useState<CountryChannels | null>(null)
   const { isFavorite } = useFavorites()
+
+  const handleChannelSelect = (channel: Channel) => {
+    const access = checkChannelAccess(channel)
+    if (!access.allowed && access.reason === "PREMIUM_REQUIRED") {
+      setPremiumPromptChannel(channel)
+      return
+    }
+    setPlayingChannel(channel)
+  }
 
   useEffect(() => {
     fetchChannels()
@@ -283,7 +295,7 @@ export function ChannelList() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-4">
                   {filteredChannels.map((channel, idx) => (
                     <Fragment key={channel.id}>
-                      <ChannelCard channel={channel} onPlay={setPlayingChannel} />
+                      <ChannelCard channel={channel} onPlay={handleChannelSelect} />
                       {idx === 5 && <AdSlot slot="native_card" />}
                     </Fragment>
                   ))}
@@ -295,6 +307,13 @@ export function ChannelList() {
       </div>
 
       {playingChannel && <VideoPlayer channel={playingChannel} onClose={() => setPlayingChannel(null)} />}
+      {premiumPromptChannel && (
+        <PremiumPromptModal
+          channel={premiumPromptChannel}
+          isOpen={Boolean(premiumPromptChannel)}
+          onClose={() => setPremiumPromptChannel(null)}
+        />
+      )}
     </>
   )
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useRef, useState, useCallback } from "react"
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import type HlsType from "hls.js"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,9 @@ import {
   Tv,
   Radio,
   Expand,
+  Settings,
+  Check,
+  Layers,
 } from "lucide-react"
 import type { Channel } from "@/lib/types"
 import { useFavorites } from "@/hooks/use-favorites"
@@ -33,6 +36,13 @@ interface VideoPlayerProps {
 type PlayerState = "idle" | "loading" | "playing" | "paused" | "buffering" | "error" | "retrying"
 type FitMode = "contain" | "cover" | "fill"
 
+interface QualityOption {
+  levelIndex: number // -1 for auto
+  label: string
+  height?: number
+  bitrate?: number
+}
+
 export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<HlsType | null>(null)
@@ -42,6 +52,16 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
   const { updateUserCoins, piAccessToken, syncServerBalance } = useAuth()
   const favorited = isFavorite(channel.id)
 
+  // Stream Candidates array
+  const streamCandidates = useMemo(() => {
+    const raw = [channel.url, ...(channel.fallbackUrls || []), channel.backupUrl].filter(
+      (url): url is string => typeof url === "string" && url.trim().length > 0
+    )
+    return Array.from(new Set(raw))
+  }, [channel.url, channel.fallbackUrls, channel.backupUrl])
+
+  const [candidateIndex, setCandidateIndex] = useState(0)
+  const [useIframeFallback, setUseIframeFallback] = useState(false)
   const [playerState, setPlayerState] = useState<PlayerState>("loading")
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(false)
@@ -49,10 +69,11 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
   const [watchedMinutes, setWatchedMinutes] = useState(0)
   const [earnedCoins, setEarnedCoins] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [useBackup, setUseBackup] = useState(false)
-  const [useIframeFallback, setUseIframeFallback] = useState(false)
-  const [retryCount, setRetryCount] = useState(0)
   const [fitMode, setFitMode] = useState<FitMode>("contain")
+  const [qualityLevels, setQualityLevels] = useState<QualityOption[]>([])
+  const [selectedQuality, setSelectedQuality] = useState<number>(-1) // -1 is Auto
+  const [isHdStream, setIsHdStream] = useState<boolean>(Boolean(channel.isHd || channel.quality === "1080p" || channel.quality === "720p"))
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false)
 
   const watchTimeRef = useRef(0)
   const piAccessTokenRef = useRef(piAccessToken)
@@ -69,24 +90,7 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
 
   const isSendingHeartbeatRef = useRef(false)
   const isActuallyPlayingRef = useRef(false)
-
-  // Detect YouTube video or embed stream
-  const isYouTube = Boolean(
-    channel.youtubeId ||
-    channel.streamType === "youtube" ||
-    channel.url?.includes("youtube.com") ||
-    channel.url?.includes("youtu.be") ||
-    useIframeFallback
-  )
-
-  // Keep isActuallyPlayingRef synchronized with playerState & isYouTube
-  useEffect(() => {
-    if (isYouTube) {
-      isActuallyPlayingRef.current = true
-    } else {
-      isActuallyPlayingRef.current = playerState === "playing"
-    }
-  }, [playerState, isYouTube])
+  const retryAttemptsRef = useRef(0)
 
   const extractYouTubeId = useCallback((url: string, explicitId?: string): string => {
     if (explicitId) return explicitId
@@ -95,34 +99,86 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
   }, [])
 
   const currentYoutubeId = extractYouTubeId(channel.url, channel.youtubeId)
-  const activeStreamUrl = useBackup && channel.backupUrl ? channel.backupUrl : channel.url
 
-  // HLS & Native Video Lifecycle Engine
+  // Determine if stream is YouTube
+  const isYouTube = Boolean(
+    useIframeFallback ||
+    (channel.streamType === "youtube" && currentYoutubeId) ||
+    (streamCandidates.length === 0 && currentYoutubeId) ||
+    channel.url?.includes("youtube.com") ||
+    channel.url?.includes("youtu.be")
+  )
+
+  // Keep isActuallyPlayingRef synchronized
+  useEffect(() => {
+    if (isYouTube) {
+      isActuallyPlayingRef.current = true
+    } else {
+      isActuallyPlayingRef.current = playerState === "playing"
+    }
+  }, [playerState, isYouTube])
+
+  const activeStreamUrl = streamCandidates[candidateIndex] || channel.url
+
+  // Reset candidates and state when channel changes
+  useEffect(() => {
+    setCandidateIndex(0)
+    setUseIframeFallback(false)
+    setPlayerState("loading")
+    setErrorMsg(null)
+    setQualityLevels([])
+    setSelectedQuality(-1)
+    setIsHdStream(Boolean(channel.isHd || channel.quality === "1080p" || channel.quality === "720p"))
+    retryAttemptsRef.current = 0
+  }, [channel.id, channel.isHd, channel.quality])
+
+  // Primary HLS & Video Stream Lifecycle Engine
   useEffect(() => {
     let isCancelled = false
 
     setPlayerState("loading")
     setErrorMsg(null)
 
-    if (isYouTube) {
+    if (isYouTube && currentYoutubeId) {
       setPlayerState("playing")
       return
     }
 
     const video = videoRef.current
     if (!video || !activeStreamUrl) {
-      setPlayerState("error")
-      setErrorMsg("This channel is currently unavailable.")
+      if (currentYoutubeId) {
+        setUseIframeFallback(true)
+      } else {
+        setPlayerState("error")
+        setErrorMsg("Unable to play this channel right now. Please select another channel.")
+      }
       return
     }
 
+    // Clean previous Hls instance
     if (hlsRef.current) {
       hlsRef.current.destroy()
       hlsRef.current = null
     }
 
+    const switchToNextCandidateOrFallback = (reason?: string) => {
+      if (isCancelled) return
+      if (candidateIndex + 1 < streamCandidates.length) {
+        console.log(`[StreamEngine] Switching to fallback source ${candidateIndex + 2}/${streamCandidates.length} (${reason || "stream error"})`)
+        setCandidateIndex((prev) => prev + 1)
+      } else if (currentYoutubeId && !useIframeFallback) {
+        console.log("[StreamEngine] HLS streams exhausted, switching to YouTube live fallback")
+        setUseIframeFallback(true)
+      } else {
+        setPlayerState("error")
+        setErrorMsg("Live broadcast currently offline. You can retry or choose another channel.")
+      }
+    }
+
     const setupPlayer = async () => {
-      if (activeStreamUrl.includes(".m3u8")) {
+      const isM3U8 = activeStreamUrl.includes(".m3u8") || activeStreamUrl.includes("/hls/")
+
+      if (isM3U8) {
         try {
           const HlsModule = (await import("hls.js")).default
           if (HlsModule.isSupported()) {
@@ -132,98 +188,136 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
               backBufferLength: 60,
               maxBufferLength: 30,
               maxMaxBufferLength: 60,
-              manifestLoadingTimeOut: 10000,
-              manifestLoadingMaxRetry: 3,
-              levelLoadingTimeOut: 10000,
-              levelLoadingMaxRetry: 3,
+              manifestLoadingTimeOut: 12000,
+              manifestLoadingMaxRetry: 2,
+              levelLoadingTimeOut: 12000,
+              levelLoadingMaxRetry: 2,
               fragLoadingTimeOut: 15000,
-              fragLoadingMaxRetry: 4,
+              fragLoadingMaxRetry: 3,
             })
 
             hlsRef.current = hls
             hls.loadSource(activeStreamUrl)
             hls.attachMedia(video)
 
-            hls.on(HlsModule.Events.MANIFEST_PARSED, () => {
+            hls.on(HlsModule.Events.MANIFEST_PARSED, (_, data) => {
               if (isCancelled) return
+
+              // Parse Quality Levels
+              if (data && data.levels && data.levels.length > 0) {
+                const parsedOptions: QualityOption[] = [
+                  { levelIndex: -1, label: "Auto (Adaptive)" },
+                ]
+                let foundHd = false
+
+                data.levels.forEach((lvl, idx) => {
+                  const h = lvl.height || 0
+                  let lbl = `${h}p`
+                  if (h >= 1080) lbl = "1080p HD"
+                  else if (h >= 720) lbl = "720p HD"
+                  else if (h >= 480) lbl = "480p SD"
+                  else if (h > 0) lbl = `${h}p`
+                  else lbl = `Level ${idx + 1}`
+
+                  if (h >= 720) foundHd = true
+
+                  parsedOptions.push({
+                    levelIndex: idx,
+                    label: lbl,
+                    height: h,
+                    bitrate: lvl.bitrate,
+                  })
+                })
+
+                setQualityLevels(parsedOptions)
+                if (foundHd) setIsHdStream(true)
+              }
+
               video
                 .play()
                 .then(() => {
-                  if (!isCancelled) setPlayerState("playing")
+                  if (!isCancelled) {
+                    setPlayerState("playing")
+                    setErrorMsg(null)
+                  }
                 })
-                .catch(() => {
+                .catch((err) => {
+                  console.log("[StreamEngine] Autoplay note:", err)
                   if (!isCancelled) setPlayerState("paused")
                 })
             })
 
+            hls.on(HlsModule.Events.LEVEL_SWITCHED, (_, data) => {
+              if (isCancelled || !hls.levels) return
+              const activeLevel = hls.levels[data.level]
+              if (activeLevel && activeLevel.height && activeLevel.height >= 720) {
+                setIsHdStream(true)
+              }
+            })
+
             hls.on(HlsModule.Events.ERROR, (_, data) => {
               if (isCancelled) return
+
               if (data.fatal) {
                 switch (data.type) {
                   case HlsModule.ErrorTypes.NETWORK_ERROR:
-                    if (retryCount < 3) {
-                      setRetryCount((prev) => prev + 1)
+                    if (retryAttemptsRef.current < 2) {
+                      retryAttemptsRef.current += 1
                       setPlayerState("retrying")
                       hls.startLoad()
                     } else {
                       hls.destroy()
                       hlsRef.current = null
-                      handleStreamFailure()
+                      switchToNextCandidateOrFallback("Network error")
                     }
                     break
                   case HlsModule.ErrorTypes.MEDIA_ERROR:
-                    if (retryCount < 3) {
-                      setRetryCount((prev) => prev + 1)
+                    if (retryAttemptsRef.current < 2) {
+                      retryAttemptsRef.current += 1
                       setPlayerState("retrying")
                       hls.recoverMediaError()
                     } else {
                       hls.destroy()
                       hlsRef.current = null
-                      handleStreamFailure()
+                      switchToNextCandidateOrFallback("Media decode error")
                     }
                     break
                   default:
                     hls.destroy()
                     hlsRef.current = null
-                    handleStreamFailure()
+                    switchToNextCandidateOrFallback("Fatal stream error")
                     break
                 }
               }
             })
+
             return
           }
         } catch (err) {
-          console.warn("HLS load note:", err)
+          console.warn("[StreamEngine] HLS module load exception:", err)
         }
       }
 
       if (isCancelled) return
 
-      if (video.canPlayType("application/vnd.apple.mpegurl") || !activeStreamUrl.includes(".m3u8")) {
+      // Native playback for Safari / direct video format
+      if (video.canPlayType("application/vnd.apple.mpegurl") || !isM3U8) {
         video.src = activeStreamUrl
         video.load()
         video
           .play()
           .then(() => {
-            if (!isCancelled) setPlayerState("playing")
+            if (!isCancelled) {
+              setPlayerState("playing")
+              setErrorMsg(null)
+            }
           })
-          .catch(() => {
+          .catch((err) => {
+            console.log("[StreamEngine] Native play note:", err)
             if (!isCancelled) setPlayerState("paused")
           })
       } else {
-        handleStreamFailure()
-      }
-    }
-
-    const handleStreamFailure = () => {
-      if (isCancelled) return
-      if (channel.backupUrl && !useBackup) {
-        setUseBackup(true)
-      } else if (currentYoutubeId) {
-        setUseIframeFallback(true)
-      } else {
-        setPlayerState("error")
-        setErrorMsg("This channel is currently unavailable.")
+        switchToNextCandidateOrFallback("HLS unsupported natively")
       }
     }
 
@@ -241,24 +335,30 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
         video.load()
       }
     }
-  }, [activeStreamUrl, channel, isYouTube, useBackup, useIframeFallback, retryCount, currentYoutubeId])
+  }, [activeStreamUrl, candidateIndex, streamCandidates, isYouTube, currentYoutubeId, useIframeFallback])
 
-  // Reset watch session whenever channel changes
+  // Quality Level Switching
+  const handleQualitySelect = (levelIdx: number) => {
+    setSelectedQuality(levelIdx)
+    setShowSettingsMenu(false)
+    if (hlsRef.current) {
+      hlsRef.current.currentLevel = levelIdx
+      if (levelIdx === -1) {
+        hlsRef.current.loadLevel = -1
+      }
+    }
+  }
+
+  // Reset watch session on channel change
   useEffect(() => {
     watchTimeRef.current = 0
     setWatchedMinutes(0)
     setEarnedCoins(0)
   }, [channel.id])
 
-  // Watch Time & Reward Engine (Stable Lifecycle - Independent of Rapid PlayerState Transitions)
+  // Watch Time & Reward Heartbeat Engine
   useEffect(() => {
-    console.log("[WatchPoints] session engine mounted", {
-      channelId: channel.id,
-      channelName: channel.name,
-    })
-
     const interval = setInterval(async () => {
-      // Only accumulate seconds while actual playback is active
       if (!isActuallyPlayingRef.current) return
 
       watchTimeRef.current += 1
@@ -272,12 +372,9 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
         try {
           const token = piAccessTokenRef.current
           if (!token) {
-            console.warn("[WatchPoints] heartbeat skipped: User is unauthenticated (no Pi access token)")
             isSendingHeartbeatRef.current = false
             return
           }
-
-          console.log("[WatchPoints] heartbeat sent for channel:", channelRef.current.id, "watchSeconds:", watchTimeRef.current)
 
           const res = await fetch("/api/rewards/heartbeat", {
             method: "POST",
@@ -291,22 +388,10 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
             }),
           })
 
-          if (res.status === 401) {
-            console.warn("[WatchPoints] heartbeat unauthorized")
-            return
-          }
-
           if (res.ok) {
             const data = await res.json()
-            console.log("[WatchPoints] heartbeat response", {
-              success: data.success,
-              coinsAwarded: data.coinsAwarded,
-              message: data.message,
-            })
-
             if (data && data.success) {
               if (data.coinsAwarded > 0) {
-                console.log("[WatchPoints] coins awarded", data.coinsAwarded)
                 setEarnedCoins((prev) => prev + data.coinsAwarded)
               }
               if (typeof data.totalCoins === "number") {
@@ -318,14 +403,10 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
               } else {
                 syncServerBalanceRef.current()
               }
-            } else if (data?.message?.includes("rate limited")) {
-              console.log("[WatchPoints] heartbeat rate limited")
-            } else if (data?.message?.includes("Insufficient watch duration")) {
-              console.log("[WatchPoints] insufficient verified duration")
             }
           }
         } catch (e) {
-          console.warn("[WatchPoints] Reward heartbeat network error:", e)
+          console.warn("[WatchPoints] Heartbeat notice:", e)
         } finally {
           isSendingHeartbeatRef.current = false
         }
@@ -335,7 +416,7 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
     return () => clearInterval(interval)
   }, [channel.id])
 
-  // Standard HTML5 Fullscreen & In-App Expanded Player Handling
+  // HTML5 Fullscreen & In-App Expanded View Handling
   const toggleFullscreen = async () => {
     const container = containerRef.current
     const isCurrentlyFS = Boolean(
@@ -348,7 +429,7 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
         try {
           await document.exitFullscreen()
         } catch (e) {
-          console.warn("[Fullscreen] exitFullscreen note:", e)
+          console.warn("[Fullscreen] exit note:", e)
         }
       } else if ((document as any).webkitExitFullscreen) {
         try {
@@ -367,8 +448,7 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
             ;(videoRef.current as any).webkitEnterFullscreen()
           }
         } catch (err) {
-          console.warn("[Fullscreen] Native requestFullscreen note:", err)
-          // In-app expanded player mode is active via isFullscreen state
+          console.warn("[Fullscreen] Native request note:", err)
         }
       }
     }
@@ -379,8 +459,6 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
       const isNativeFS = Boolean(document.fullscreenElement || (document as any).webkitFullscreenElement)
       if (isNativeFS) {
         setIsFullscreen(true)
-      } else if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
-        // Native exit occurred
       }
     }
 
@@ -435,15 +513,27 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
   }
 
   const handleManualRetry = () => {
-    setRetryCount(0)
+    retryAttemptsRef.current = 0
+    setCandidateIndex(0)
+    setUseIframeFallback(false)
     setPlayerState("loading")
     setErrorMsg(null)
-    if (channel.backupUrl && !useBackup) {
-      setUseBackup(true)
+    if (videoRef.current) {
+      videoRef.current.load()
+    }
+  }
+
+  const handleCycleSource = () => {
+    if (streamCandidates.length > 1) {
+      const nextIdx = (candidateIndex + 1) % streamCandidates.length
+      setCandidateIndex(nextIdx)
+      setUseIframeFallback(false)
+      setPlayerState("loading")
+      setErrorMsg(null)
     } else if (currentYoutubeId) {
       setUseIframeFallback(true)
-    } else if (videoRef.current) {
-      videoRef.current.load()
+      setPlayerState("playing")
+      setErrorMsg(null)
     }
   }
 
@@ -502,9 +592,19 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
                   <span className="w-1.5 h-1.5 rounded-full bg-white" />
                   LIVE
                 </span>
+                {isHdStream && (
+                  <span className="text-[10px] font-extrabold tracking-wider bg-blue-600/90 text-white px-1.5 py-0.5 rounded shadow">
+                    HD
+                  </span>
+                )}
               </div>
               <p className="text-xs text-zinc-400 truncate">
                 {channel.category || "TV Channel"} • {channel.language || "Multi-Language"}
+                {streamCandidates.length > 1 && !isYouTube && (
+                  <span className="ml-2 text-zinc-500">
+                    Source {candidateIndex + 1}/{streamCandidates.length}
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -557,7 +657,7 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
           </div>
         </div>
 
-        {/* Video Player Container */}
+        {/* Video Player Stage Container */}
         <div
           ref={containerRef}
           className={`bg-black relative flex items-center justify-center overflow-hidden w-full group ${
@@ -578,9 +678,13 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20 space-y-2">
                   <div className="animate-spin w-10 h-10 border-4 border-primary border-t-transparent rounded-full mb-1" />
                   <p className="text-zinc-300 text-sm font-medium">
-                    {playerState === "retrying" ? "Reconnecting stream..." : "Connecting live stream..."}
+                    {playerState === "retrying" ? "Reconnecting live stream..." : "Connecting live stream..."}
                   </p>
-                  {useBackup && <p className="text-xs text-amber-400">Using backup stream...</p>}
+                  {candidateIndex > 0 && (
+                    <p className="text-xs text-amber-400">
+                      Using backup stream source {candidateIndex + 1}...
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -593,14 +697,15 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
                       <RotateCcw className="w-3.5 h-3.5" />
                       Retry Stream
                     </Button>
-                    {channel.backupUrl && !useBackup && (
-                      <Button size="sm" variant="outline" onClick={() => setUseBackup(true)} className="gap-1.5 border-zinc-700 text-zinc-200">
-                        Switch to Backup
+                    {streamCandidates.length > 1 && (
+                      <Button size="sm" variant="outline" onClick={handleCycleSource} className="gap-1.5 border-zinc-700 text-zinc-200">
+                        <Layers className="w-3.5 h-3.5" />
+                        Switch Source ({candidateIndex + 1}/{streamCandidates.length})
                       </Button>
                     )}
                     {currentYoutubeId && !useIframeFallback && (
                       <Button size="sm" variant="secondary" onClick={() => setUseIframeFallback(true)} className="gap-1.5">
-                        YouTube Player
+                        YouTube Stream
                       </Button>
                     )}
                   </div>
@@ -637,19 +742,31 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
                   isActuallyPlayingRef.current = false
                   setPlayerState("buffering")
                 }}
-                onError={() => {
-                  isActuallyPlayingRef.current = false
-                  if (channel.backupUrl && !useBackup) {
-                    setUseBackup(true)
-                  } else if (currentYoutubeId) {
-                    setUseIframeFallback(true)
-                  } else {
-                    setPlayerState("error")
-                    setErrorMsg("This channel is currently unavailable.")
-                  }
-                }}
               />
             </>
+          )}
+
+          {/* Quality & Settings Dropdown Menu */}
+          {showSettingsMenu && qualityLevels.length > 0 && (
+            <div className="absolute right-4 bottom-16 bg-zinc-900 border border-zinc-700 rounded-lg p-2 z-40 shadow-xl min-w-[160px] space-y-1">
+              <div className="text-[11px] font-bold text-zinc-400 px-2 py-1 uppercase tracking-wider border-b border-zinc-800">
+                Stream Quality
+              </div>
+              {qualityLevels.map((opt) => (
+                <button
+                  key={opt.levelIndex}
+                  onClick={() => handleQualitySelect(opt.levelIndex)}
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded flex items-center justify-between transition-colors ${
+                    selectedQuality === opt.levelIndex
+                      ? "bg-primary/20 text-primary font-bold"
+                      : "text-zinc-300 hover:bg-zinc-800"
+                  }`}
+                >
+                  <span>{opt.label}</span>
+                  {selectedQuality === opt.levelIndex && <Check className="w-3.5 h-3.5" />}
+                </button>
+              ))}
+            </div>
           )}
 
           {/* Player Overlay Controls */}
@@ -688,7 +805,45 @@ export function VideoPlayer({ channel, onClose }: VideoPlayerProps) {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Quality Selector (when Hls levels exist) */}
+              {!isYouTube && qualityLevels.length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowSettingsMenu((prev) => !prev)}
+                  className={`text-xs h-9 px-2.5 gap-1 font-mono uppercase border ${
+                    showSettingsMenu
+                      ? "bg-primary/20 text-primary border-primary/40"
+                      : "text-zinc-200 hover:text-white hover:bg-white/20 bg-white/10 border-white/10"
+                  }`}
+                  title="Select Stream Quality"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  <span className="text-[10px]">
+                    {selectedQuality === -1
+                      ? "Auto"
+                      : qualityLevels.find((q) => q.levelIndex === selectedQuality)?.label || "HD"}
+                  </span>
+                </Button>
+              )}
+
+              {/* Source switcher (if multiple stream candidates exist) */}
+              {!isYouTube && streamCandidates.length > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCycleSource}
+                  className="text-xs text-zinc-200 hover:text-white hover:bg-white/20 h-9 px-2.5 gap-1 font-mono uppercase bg-white/10 border border-white/10"
+                  title="Switch Stream Source"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span className="text-[10px]">SRC {candidateIndex + 1}</span>
+                </Button>
+              )}
+
               {!isYouTube && (
                 <Button
                   type="button"

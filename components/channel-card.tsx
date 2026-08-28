@@ -4,7 +4,7 @@ import React from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Heart, Play, Radio } from "lucide-react"
+import { Heart, Play, Radio, Crown } from "lucide-react"
 import type { Channel } from "@/lib/types"
 import { useFavorites } from "@/hooks/use-favorites"
 
@@ -16,6 +16,7 @@ interface ChannelCardProps {
 export function ChannelCard({ channel, onPlay }: ChannelCardProps) {
   const { isFavorite, toggleFavorite } = useFavorites()
   const favorited = isFavorite(channel.id)
+  const isPremium = Boolean(channel.isPremium || channel.status === "PREMIUM")
 
   const handleFavoriteClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -28,10 +29,23 @@ export function ChannelCard({ channel, onPlay }: ChannelCardProps) {
       onClick={() => onPlay(channel)}
     >
       <div className="relative aspect-video bg-gradient-to-br from-secondary/80 to-muted flex items-center justify-center overflow-hidden">
-        {/* Live Badge */}
-        <div className="absolute top-2 left-2 z-10 flex items-center gap-1 text-[10px] font-bold tracking-wider bg-red-600/90 text-white px-2 py-0.5 rounded-full shadow">
-          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-          LIVE
+        {/* Live, HD & Premium Badges */}
+        <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
+          <div className="flex items-center gap-1 text-[10px] font-bold tracking-wider bg-red-600/90 text-white px-2 py-0.5 rounded-full shadow">
+            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+            LIVE
+          </div>
+          {isPremium && (
+            <div className="flex items-center gap-1 text-[10px] font-bold tracking-wider bg-amber-500 text-black px-1.5 py-0.5 rounded shadow">
+              <Crown className="w-2.5 h-2.5 fill-current" />
+              VIP
+            </div>
+          )}
+          {(channel.isHd || channel.quality === "1080p" || channel.quality === "720p") && (
+            <div className="text-[10px] font-bold tracking-wider bg-blue-600/90 text-white px-1.5 py-0.5 rounded shadow">
+              HD
+            </div>
+          )}
         </div>
 
         {/* Favorite Button */}

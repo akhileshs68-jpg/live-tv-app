@@ -5,11 +5,11 @@ import Link from 'next/link';
 import type { User } from '@/lib/db-types';
 import { formatCoins } from '@/lib/reward-utils';
 import { Badge } from '@/components/ui/badge';
-import { User as UserIcon, Crown } from 'lucide-react';
+import { User as UserIcon, Crown, Shield } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 
 export function DashboardHeader({ user }: { user: User | null }) {
-  const { premiumStatus } = useAuth();
+  const { premiumStatus, isAdmin } = useAuth();
   const isPremium = Boolean(premiumStatus?.active);
 
   return (
@@ -38,6 +38,18 @@ export function DashboardHeader({ user }: { user: User | null }) {
 
         {/* Balance, Premium Badge & User Account */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Owner / Admin Shortcut Button */}
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 text-amber-400 px-2 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-xs"
+              title="Open Owner / Admin Panel"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Admin</span>
+            </Link>
+          )}
+
           {/* Watch Points Balance */}
           <Link href="/earn" className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 hover:border-amber-500/40 rounded-lg px-2.5 py-1.5 shadow-xs transition-colors">
             <span className="text-sm">⭐</span>

@@ -140,20 +140,38 @@ export async function POST(req: NextRequest) {
       );
     });
 
-    // 2. Write audit log entry if points were awarded
+    // 2. Write audit log entry and update aggregate channel analytics if points were awarded
     if (coinsAwarded > 0) {
       try {
-        await adminDb.collection("watch_events").add({
-          eventId: `evt_${now}_${Math.random().toString(36).substring(2, 7)}`,
-          piUserId,
-          channelId,
-          channelName,
-          watchSeconds: 30, // Fixed 30 verified seconds
-          coinsAwarded,
-          timestamp: now,
-        });
+        await Promise.allSettled([
+          adminDb.collection("watch_events").add({
+            eventId: `evt_${now}_${Math.random().toString(36).substring(2, 7)}`,
+            piUserId,
+            channelId,
+            channelName,
+            watchSeconds: 30, // Fixed 30 verified seconds
+            coinsAwarded,
+            timestamp: now,
+          }),
+          // Maintain aggregate channel analytics
+          adminDb.collection("channel_analytics").doc(channelId).set(
+            {
+              channelId,
+              channelName,
+              totalWatchSeconds: (await adminDb.collection("channel_analytics").doc(channelId).get()).data()?.totalWatchSeconds
+                ? ((await adminDb.collection("channel_analytics").doc(channelId).get()).data()?.totalWatchSeconds || 0) + 30
+                : 30,
+              totalViews: (await adminDb.collection("channel_analytics").doc(channelId).get()).data()?.totalViews
+                ? ((await adminDb.collection("channel_analytics").doc(channelId).get()).data()?.totalViews || 0) + 1
+                : 1,
+              lastWatchedAt: now,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          ),
+        ]);
       } catch (logErr) {
-        console.warn("Audit log write notice:", logErr);
+        console.warn("Audit log / analytics write notice:", logErr);
       }
     }
 
