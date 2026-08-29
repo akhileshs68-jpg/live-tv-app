@@ -4,7 +4,8 @@ import { verifyPiAccessToken, type VerifiedPiUser } from "@/lib/pi-auth-verify";
 
 /**
  * Server-Authoritative Admin/Owner Verifier
- * Verifies if the incoming request originates from an authorized Owner or Admin.
+ * Verifies if the incoming request originates from the authorized Owner Pi account.
+ * Strictly rejects guest tokens, preview tokens, email logins, and unauthorized Pioneers.
  */
 export async function verifyAdminAuthorization(
   req: NextRequest | Request
@@ -23,9 +24,9 @@ export async function verifyAdminAuthorization(
     };
   }
 
-  // 2. Reject missing, empty, or unauthenticated preview/guest tokens
+  // 2. Strictly reject missing, empty, or guest/preview tokens
   if (!token || token === "dev_preview_token" || token.startsWith("dev_preview_")) {
-    return { isAuthorized: false, reason: "Unauthorized: Pioneer Admin credentials required." };
+    return { isAuthorized: false, reason: "Unauthorized: Verified Pi Pioneer credentials required." };
   }
 
   // 3. Verify Pioneer token against Pi Platform API
@@ -34,47 +35,70 @@ export async function verifyAdminAuthorization(
     return { isAuthorized: false, reason: "Invalid or expired Pi token" };
   }
 
+  // Strictly reject any dev preview user identifiers
+  if (verifiedUser.uid === "dev_preview_uid_123" || verifiedUser.username === "Dev_Pioneer_Preview") {
+    return { isAuthorized: false, reason: "Unauthorized: Guest preview mode cannot access Admin." };
+  }
+
   const rawUsername = (verifiedUser.username || "").toLowerCase().trim();
   const usernameLower = rawUsername.replace(/^@/, "");
   const uid = verifiedUser.uid;
 
-  // 4. Check configured owner/admin usernames list from environment or default owner identifiers
+  // 4. Authorized owner Pi usernames (akhileshs68) + environment overrides
   const envAdminUsernames = (process.env.ADMIN_USERNAMES || "")
     .toLowerCase()
     .split(",")
     .map((s) => s.trim().replace(/^@/, ""))
     .filter(Boolean);
 
-  // Default owner identifiers (app creator / owner handles)
-  const defaultOwnerHandles = ["akhileshs68", "akhilesh68", "akhilesh", "admin", "owner", "livetv_owner"];
-  const isEnvAdmin =
+  const isOwnerUsername =
+    usernameLower === "akhileshs68" ||
+    usernameLower === "akhilesh68" ||
     envAdminUsernames.includes(usernameLower) ||
-    envAdminUsernames.includes(rawUsername) ||
-    defaultOwnerHandles.includes(usernameLower) ||
-    defaultOwnerHandles.includes(rawUsername);
+    envAdminUsernames.includes(rawUsername);
 
-  if (isEnvAdmin) {
+  if (isOwnerUsername) {
+    // Bind ONLY this verified Pi UID into Firestore admin document dynamically
+    if (uid && uid !== "dev_preview_uid_123") {
+      try {
+        await adminDb.collection("admins").doc(uid).set(
+          {
+            uid,
+            username: verifiedUser.username,
+            role: "admin",
+            isOwner: true,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn("[AdminAuth] Firestore admin UID binding notice:", err);
+      }
+    }
     return { isAuthorized: true, user: verifiedUser };
   }
 
-  // 5. Check Firestore admin/owner roles in database
+  // 5. Check if this verified Pi UID was previously verified and bound to Firestore admins collection
   try {
-    // Check 'admins' collection
     const adminDoc = await adminDb.collection("admins").doc(uid).get();
     if (adminDoc.exists) {
-      return { isAuthorized: true, user: verifiedUser };
+      const data = adminDoc.data();
+      if (
+        data?.role === "admin" ||
+        data?.isOwner === true ||
+        data?.username?.toLowerCase() === "akhileshs68"
+      ) {
+        return { isAuthorized: true, user: verifiedUser };
+      }
     }
 
-    const adminByUsername = await adminDb.collection("admins").doc(usernameLower).get();
-    if (adminByUsername.exists) {
-      return { isAuthorized: true, user: verifiedUser };
-    }
-
-    // Check 'users' collection for role === 'admin' | 'owner'
     const userDoc = await adminDb.collection("users").doc(uid).get();
     if (userDoc.exists) {
       const uData = userDoc.data();
-      if (uData?.role === "admin" || uData?.role === "owner" || uData?.isOwner === true) {
+      if (
+        (uData?.role === "admin" || uData?.role === "owner" || uData?.isOwner === true) &&
+        (uData?.username?.toLowerCase() === "akhileshs68" || adminDoc.exists)
+      ) {
         return { isAuthorized: true, user: verifiedUser };
       }
     }
