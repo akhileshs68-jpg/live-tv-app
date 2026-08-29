@@ -23,16 +23,9 @@ export async function verifyAdminAuthorization(
     };
   }
 
-  // 2. In AI Studio dev/preview environment with dev preview token
-  if (token === "dev_preview_token" || token?.startsWith("dev_preview_")) {
-    return {
-      isAuthorized: true,
-      user: { uid: "dev_preview_uid_123", username: "Dev_Pioneer_Preview" },
-    };
-  }
-
-  if (!token) {
-    return { isAuthorized: false, reason: "Missing Authorization token" };
+  // 2. Reject missing, empty, or unauthenticated preview/guest tokens
+  if (!token || token === "dev_preview_token" || token.startsWith("dev_preview_")) {
+    return { isAuthorized: false, reason: "Unauthorized: Pioneer Admin credentials required." };
   }
 
   // 3. Verify Pioneer token against Pi Platform API
@@ -53,7 +46,7 @@ export async function verifyAdminAuthorization(
     .filter(Boolean);
 
   // Default owner identifiers (app creator / owner handles)
-  const defaultOwnerHandles = ["akhileshs68", "akhilesh", "admin", "owner", "livetv_owner"];
+  const defaultOwnerHandles = ["akhileshs68", "akhilesh68", "akhilesh", "admin", "owner", "livetv_owner"];
   const isEnvAdmin =
     envAdminUsernames.includes(usernameLower) ||
     envAdminUsernames.includes(rawUsername) ||
@@ -87,11 +80,6 @@ export async function verifyAdminAuthorization(
     }
   } catch (err) {
     console.warn("[AdminAuth] Firestore role check notice:", err);
-  }
-
-  // If token is dev_preview_token, allow fallback
-  if (token === "dev_preview_token" || token?.startsWith("dev_preview_")) {
-    return { isAuthorized: true, user: verifiedUser };
   }
 
   return { isAuthorized: false, reason: "User does not have admin/owner privileges" };

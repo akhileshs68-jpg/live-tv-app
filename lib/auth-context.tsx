@@ -124,20 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const updateAdminState = useCallback((admin: boolean) => {
-    setIsAdmin(admin);
-    if (typeof window !== 'undefined') {
-      try {
-        if (admin) {
-          sessionStorage.setItem('pi_is_admin', 'true');
-          localStorage.setItem('pi_is_admin', 'true');
-        } else {
-          sessionStorage.removeItem('pi_is_admin');
-          localStorage.removeItem('pi_is_admin');
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
+    setIsAdmin(Boolean(admin));
   }, []);
   const [authStatus, setAuthStatus] = useState<AuthStatus>('idle');
   const [authMessage, setAuthMessage] = useState('Initializing Pi Network...');
@@ -145,16 +132,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isDevPreview, setIsDevPreview] = useState(false);
 
   const fetchServerAdminStatus = async (token: string | null): Promise<boolean> => {
-    const isPiBrowser = typeof window !== 'undefined' && navigator.userAgent.includes('PiBrowser');
-    const effectiveToken = token || (!isPiBrowser ? 'dev_preview_token' : null);
-    if (!effectiveToken) {
+    if (!token || token === 'dev_preview_token' || token.startsWith('dev_preview_')) {
       return false;
     }
     try {
       const res = await fetch(getApiUrl('/api/admin/verify'), {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${effectiveToken}`,
+          'Authorization': `Bearer ${token}`,
         },
       });
       if (res.ok) {
@@ -309,14 +294,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
       setAuthStatus('authenticated');
       setAuthMessage('Live TV Preview Mode');
+      updateAdminState(false);
       setLoading(false);
-
-      // Check server admin status asynchronously for preview authorization
-      fetchServerAdminStatus(devToken).then((serverAdmin) => {
-        updateAdminState(serverAdmin);
-      }).catch(() => {
-        updateAdminState(true);
-      });
       return;
     }
 
@@ -443,9 +422,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(null);
       setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
-      if (isPiBrowser) {
-        updateAdminState(false);
-      }
+      updateAdminState(false);
       AdManager.setPremiumStatus(false);
       setPiAccessToken(null);
       setIsDevPreview(false);
@@ -485,15 +462,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAdminStatus = useCallback(async (): Promise<boolean> => {
     const admin = await fetchServerAdminStatus(piAccessToken);
-    if (admin) {
-      updateAdminState(true);
-      return true;
-    }
-    const isPiBrowser = typeof window !== 'undefined' && navigator.userAgent.includes('PiBrowser');
-    if (!isPiBrowser) {
-      updateAdminState(true);
-      return true;
-    }
     updateAdminState(admin);
     return admin;
   }, [piAccessToken, updateAdminState]);
