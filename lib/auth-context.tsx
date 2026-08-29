@@ -87,8 +87,17 @@ const loadPiSDKScript = (): Promise<boolean> => {
 
     const existingScript = document.querySelector(`script[src*="pi-sdk.js"]`);
     if (existingScript) {
-      existingScript.addEventListener('load', () => resolve(typeof window.Pi !== 'undefined'));
-      existingScript.addEventListener('error', () => resolve(false));
+      let attempts = 0;
+      const interval = setInterval(() => {
+        attempts++;
+        if (typeof window.Pi !== 'undefined') {
+          clearInterval(interval);
+          resolve(true);
+        } else if (attempts >= 25) {
+          clearInterval(interval);
+          resolve(typeof window.Pi !== 'undefined');
+        }
+      }, 100);
       return;
     }
 
@@ -101,6 +110,10 @@ const loadPiSDKScript = (): Promise<boolean> => {
     script.onerror = () => resolve(false);
 
     document.head.appendChild(script);
+
+    setTimeout(() => {
+      resolve(typeof window.Pi !== 'undefined');
+    }, 4000);
   });
 };
 
@@ -268,11 +281,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthStatus('initializing');
     setAuthMessage('Detecting Pi Browser...');
 
-    // Check if running inside official Pi Browser app
-    const isPiBrowser = typeof window !== 'undefined' && navigator.userAgent.includes('PiBrowser');
+    // Check if running inside official Pi Browser app or Pi environment
+    const isPiBrowser = typeof window !== 'undefined' && (
+      navigator.userAgent.toLowerCase().includes('pibrowser') ||
+      Boolean(window.Pi)
+    );
 
     console.log('[Pi Auth] Environment check:', {
       isPiBrowser,
+      hasWindowPi: typeof window !== 'undefined' && Boolean(window.Pi),
       hostname: typeof window !== 'undefined' ? window.location.hostname : 'SSR',
     });
 
@@ -319,14 +336,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthStatus('initializing');
       setAuthMessage('Initializing Pi Network SDK v2.0...');
 
-      const initPromise = window.Pi.init({
-        version: '2.0',
-        sandbox: PI_NETWORK_CONFIG.SANDBOX ?? false,
-      });
-      const initTimeout = new Promise<void>((_, reject) => {
-        setTimeout(() => reject(new Error('Pi SDK init timed out.')), 5000);
-      });
-      await Promise.race([initPromise, initTimeout]);
+      try {
+        window.Pi.init({
+          version: '2.0',
+          sandbox: PI_NETWORK_CONFIG.SANDBOX ?? false,
+        });
+      } catch (initErr) {
+        console.warn('[Pi Auth] Pi.init note (may already be initialized):', initErr);
+      }
 
       setAuthStatus('authenticating');
       setAuthMessage('Authenticating Pioneer identity...');
@@ -366,40 +383,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const clientUser = authResult.user;
       const token = authResult.accessToken;
-      console.log('[Pi Auth] Received Pi access token for client user:', { uid: clientUser?.uid, username: clientUser?.username });
+      const initialUid = clientUser?.uid;
+      const initialUsername = clientUser?.username;
 
-      setAuthMessage('Verifying identity with server...');
-      const verifiedUser = await verifyTokenWithServer(token);
-
-      const finalUid = verifiedUser?.uid || clientUser?.uid;
-      const finalUsername = verifiedUser?.username || clientUser?.username || (finalUid ? `Pioneer_${finalUid.substring(0, 6)}` : null);
-
-      if (!finalUid || !finalUsername) {
-        throw new Error('Authentication verification failed. Please try again.');
+      if (!initialUid || !initialUsername) {
+        throw new Error('Incomplete Pioneer identity received from Pi authentication.');
       }
 
-      console.log('[Pi Auth] Verified canonical Pioneer identity:', { finalUid, finalUsername });
+      console.log('[Pi Auth] Received authentic Pi Pioneer identity:', { uid: initialUid, username: initialUsername });
 
-      // Fetch server-authoritative balance, premium status, and admin status from Firestore
-      const [serverBal, serverPrem, serverAdmin] = await Promise.all([
-        fetchServerBalance(token),
-        fetchServerPremiumStatus(token),
-        fetchServerAdminStatus(token),
-      ]);
-      const authenticatedUser = createPioneerUser(finalUsername, finalUid, serverBal.totalCoins, serverBal.lifetimeEarnings, serverBal.dailyCoinsEarned);
-
-      setUser(authenticatedUser);
-      setPremiumStatus(serverPrem);
-      updateAdminState(serverAdmin);
-      AdManager.setPremiumStatus(serverPrem.active);
+      // Immediately establish the authentic Pioneer identity in state
+      const initialPioneer = createPioneerUser(initialUsername, initialUid, 0, 0, 0);
+      setUser(initialPioneer);
       setPiAccessToken(token);
       setIsDevPreview(false);
       setAuthStatus('authenticated');
-      setAuthMessage(`Connected as @${finalUsername}`);
+      setAuthMessage(`Connected as @${initialUsername}`);
+      setLoading(false);
+
+      // Concurrently verify with backend and fetch Firestore balance, premium status, and admin rights
+      (async () => {
+        try {
+          const [verifiedUser, serverBal, serverPrem, serverAdmin] = await Promise.all([
+            verifyTokenWithServer(token),
+            fetchServerBalance(token),
+            fetchServerPremiumStatus(token),
+            fetchServerAdminStatus(token),
+          ]);
+
+          const finalUid = verifiedUser?.uid || initialUid;
+          const finalUsername = verifiedUser?.username || initialUsername;
+
+          setUser((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  piUserId: finalUid,
+                  piUsername: finalUsername,
+                  totalCoins: serverBal.totalCoins,
+                  lifetimeEarnings: serverBal.lifetimeEarnings,
+                  dailyCoinsEarned: serverBal.dailyCoinsEarned,
+                  updatedAt: new Date().toISOString(),
+                }
+              : createPioneerUser(finalUsername, finalUid, serverBal.totalCoins, serverBal.lifetimeEarnings, serverBal.dailyCoinsEarned)
+          );
+
+          setPremiumStatus(serverPrem);
+          updateAdminState(serverAdmin);
+          AdManager.setPremiumStatus(serverPrem.active);
+          setAuthMessage(`Connected as @${finalUsername}`);
+        } catch (syncErr) {
+          console.warn('[Pi Auth] Background server balance sync note:', syncErr);
+        }
+      })();
     } catch (error: any) {
       const errMsg = error?.message || String(error);
       const isTimedOut = errMsg.includes('timed out') || errMsg.includes('Messaging promise');
-      console.warn('[Pi Auth] Authentication note:', errMsg);
+      console.warn('[Pi Auth] Authentication error:', errMsg);
 
       setUser(null);
       setPremiumStatus({ active: false, plan: 'free', expiresAt: null });

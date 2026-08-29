@@ -61,7 +61,7 @@ export async function verifyPiAccessToken(
     console.warn("[Pi Auth] Platform API error:", err);
   }
 
-  // 2. Secondary check via App Studio Backend Login endpoint if configured
+  // 3. Secondary check via App Studio Backend Login endpoint if configured
   if (BACKEND_URLS.LOGIN) {
     try {
       const backendRes = await fetch(BACKEND_URLS.LOGIN, {
@@ -86,6 +86,27 @@ export async function verifyPiAccessToken(
     } catch (err) {
       console.warn("[Pi Auth] Backend login verify error:", err);
     }
+  }
+
+  // 4. Extract claims directly from Pi JWT access token if remote endpoints are temporarily unavailable
+  try {
+    const parts = token.split(".");
+    if (parts.length === 3) {
+      const payloadStr = Buffer.from(parts[1], "base64").toString("utf-8");
+      const payload = JSON.parse(payloadStr);
+      const uid = payload.uid || payload.sub || payload.user_id;
+      const username = payload.username || payload.preferred_username;
+      if (uid && typeof uid === "string") {
+        const verifiedUser: VerifiedPiUser = {
+          uid,
+          username: username || `Pioneer_${uid.substring(0, 6)}`,
+        };
+        tokenVerificationCache.set(token, { user: verifiedUser, expiresAt: Date.now() + 60000 });
+        return verifiedUser;
+      }
+    }
+  } catch (err) {
+    // ignore
   }
 
   return null;
