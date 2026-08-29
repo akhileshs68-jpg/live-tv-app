@@ -119,6 +119,9 @@ const loadPiSDKScript = (): Promise<boolean> => {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const userRef = useRef<User | null>(null);
+  userRef.current = user;
+
   const [premiumStatus, setPremiumStatus] = useState<PremiumEntitlement | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
@@ -303,11 +306,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const sdkLoaded = await loadPiSDKScript();
 
       if (!sdkLoaded || typeof window.Pi === 'undefined') {
-        setUser(null);
-        setPiAccessToken(null);
-        setIsDevPreview(false);
-        setAuthStatus('pi-browser-required');
-        setAuthMessage('Please open Pi Live TV inside the Pi Browser app.');
+        const existingUser = userRef.current;
+        if (!existingUser || !existingUser.piUserId) {
+          setUser(null);
+          setPiAccessToken(null);
+          setIsDevPreview(false);
+          setAuthStatus('pi-browser-required');
+          setAuthMessage('Please open Pi Live TV inside the Pi Browser app.');
+        }
         setLoading(false);
         return;
       }
@@ -355,7 +361,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
 
       console.log('[Pi Auth] Authenticating with window.Pi.authenticate...');
-      const authResult = await window.Pi.authenticate(['username'], onIncompletePaymentFound);
+      const authResult = await window.Pi.authenticate(['username', 'payments'], onIncompletePaymentFound);
       if (!authResult || !authResult.accessToken) {
         throw new Error('No access token returned from Pi authentication.');
       }
@@ -417,21 +423,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })();
     } catch (error: any) {
       const errMsg = error?.message || String(error);
-      const isTimedOut = errMsg.includes('timed out') || errMsg.includes('Messaging promise');
+      const isTimedOut = errMsg.includes('timed out') || errMsg.includes('Messaging promise') || errMsg.includes('bridge') || errMsg.includes('network') || errMsg.includes('IPC');
+      const isExplicitInvalidAuth = errMsg.includes('invalid_token') || errMsg.includes('revoked') || errMsg.includes('unauthorized') || errMsg.includes('expired');
       console.warn('[Pi Auth] Authentication error:', errMsg);
 
-      setUser(null);
-      setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
-      updateAdminState(false);
-      AdManager.setPremiumStatus(false);
-      setPiAccessToken(null);
-      setIsDevPreview(false);
-      if (isTimedOut) {
-        setAuthStatus('pi-browser-required');
-        setAuthMessage('Pi authentication timed out. Please tap Re-authenticate in Pi Browser.');
+      const existingUser = userRef.current;
+      const hasActivePioneer = Boolean(existingUser && existingUser.piUserId);
+
+      // If an existing Pioneer session is already active and the error is transient/recoverable,
+      // preserve the existing verified Pioneer identity so the user does NOT get dropped to Guest/Unauthenticated.
+      if (hasActivePioneer && !isExplicitInvalidAuth) {
+        console.log('[Pi Auth] Preserving active Pioneer session across transient Pi Browser error:', existingUser?.piUsername);
+        setAuthStatus('authenticated');
+        setAuthMessage(`Connected as @${existingUser?.piUsername}`);
       } else {
-        setAuthStatus('error');
-        setAuthMessage(errMsg || 'Authentication failed. Please try again in Pi Browser.');
+        setUser(null);
+        setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
+        updateAdminState(false);
+        AdManager.setPremiumStatus(false);
+        setPiAccessToken(null);
+        setIsDevPreview(false);
+        if (isTimedOut) {
+          setAuthStatus('pi-browser-required');
+          setAuthMessage('Pi authentication timed out. Please tap Re-authenticate in Pi Browser.');
+        } else {
+          setAuthStatus('error');
+          setAuthMessage(errMsg || 'Authentication failed. Please try again in Pi Browser.');
+        }
       }
     } finally {
       setLoading(false);
