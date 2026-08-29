@@ -37,12 +37,12 @@ function saveStoredFavorites(favs: FavoriteChannel[]) {
 }
 
 export function useFavorites() {
-  const [favorites, setFavorites] = useState<FavoriteChannel[]>(() => getStoredFavorites())
-  const [isLoading, setIsLoading] = useState<boolean>(false)
+  const [favorites, setFavorites] = useState<FavoriteChannel[]>([])
+  const [isLoading, setIsLoading] = useState<boolean>(true)
 
   // Sync favorites on mount and on storage/custom events
   useEffect(() => {
-    // Initial sync
+    // Initial sync after mount to prevent SSR hydration mismatch
     setFavorites(getStoredFavorites())
     setIsLoading(false)
 
