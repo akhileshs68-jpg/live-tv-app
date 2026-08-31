@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { User, Settings, Bell, Shield, LogOut } from 'lucide-react';
+import { User, Settings, Bell, Shield, LogOut, LogIn } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { user, premiumStatus, isAdmin, logout } = useAuth();
+  const { user, premiumStatus, isAdmin, logout, isAuthenticated, isDevPreview, signInWithPi } = useAuth();
   const [saveSuccess, setSaveSuccess] = useState(false);
   const isPremium = Boolean(premiumStatus?.active);
 
@@ -156,10 +156,21 @@ export default function SettingsPage() {
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between p-3 bg-secondary/10 rounded-lg border border-border">
                   <span className="text-sm text-muted-foreground">Pi Authentication</span>
-                  <Badge className="bg-emerald-500/20 text-emerald-400 border-0 flex items-center gap-1">
-                    <Shield className="w-3 h-3" />
-                    Verified Pioneer
-                  </Badge>
+                  {isAuthenticated && !isDevPreview ? (
+                    <Badge className="bg-emerald-500/20 text-emerald-400 border-0 flex items-center gap-1">
+                      <Shield className="w-3 h-3" />
+                      Verified Pioneer
+                    </Badge>
+                  ) : (
+                    <Button
+                      onClick={() => signInWithPi()}
+                      size="sm"
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-7 px-3 text-xs"
+                    >
+                      <LogIn className="w-3.5 h-3.5 mr-1" />
+                      Sign In with Pi
+                    </Button>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between p-3 bg-secondary/10 rounded-lg border border-border">

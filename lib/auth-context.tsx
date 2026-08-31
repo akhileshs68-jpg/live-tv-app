@@ -60,6 +60,7 @@ interface AuthContextType {
   authMessage: string;
   piAccessToken: string | null;
   isDevPreview: boolean;
+  signInWithPi: () => Promise<void>;
   reauthenticate: () => Promise<void>;
   updateUserCoins: (amount: number) => void;
   syncServerBalance: (explicitBalance?: { totalCoins?: number; dailyCoinsEarned?: number; lifetimeEarnings?: number }) => Promise<void>;
@@ -124,7 +125,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const [premiumStatus, setPremiumStatus] = useState<PremiumEntitlement | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const isAdminRef = useRef<boolean>(false);
+  isAdminRef.current = isAdmin;
+
   const [loading, setLoading] = useState(true);
+
+  // In-flight concurrency guard and monotonic request version tracker
+  const authInProgressRef = useRef<boolean>(false);
+  const authRequestIdRef = useRef<number>(0);
 
   const updateAdminState = useCallback((admin: boolean) => {
     setIsAdmin(Boolean(admin));
@@ -134,7 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [piAccessToken, setPiAccessToken] = useState<string | null>(null);
   const [isDevPreview, setIsDevPreview] = useState(false);
 
-  const fetchServerAdminStatus = async (token: string | null): Promise<boolean> => {
+  const fetchServerAdminStatus = async (token: string | null): Promise<boolean | null> => {
     if (!token || token === 'dev_preview_token' || token.startsWith('dev_preview_')) {
       return false;
     }
@@ -149,10 +157,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         return Boolean(data && data.success && data.isAdmin);
       }
+      // Non-200 response (e.g. 500, 502, 503, 504) -> transient server error
+      return null;
     } catch (err) {
-      console.warn('Failed to fetch server admin status:', err);
+      console.warn('Failed to fetch server admin status (transient error):', err);
+      return null;
     }
-    return false;
   };
 
   const generateReferralCode = useCallback((piUsername?: string) => {
@@ -166,7 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return `${usernameHash}${random}${timestamp.substring(0, 4)}`;
   }, []);
 
-  const fetchServerPremiumStatus = async (token: string | null): Promise<PremiumEntitlement> => {
+  const fetchServerPremiumStatus = async (token: string | null): Promise<PremiumEntitlement | null> => {
     if (!token) {
       return { active: false, plan: 'free', expiresAt: null };
     }
@@ -187,13 +197,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           };
         }
       }
+      return null;
     } catch (err) {
       console.warn('Failed to fetch server premium status:', err);
+      return null;
     }
-    return { active: false, plan: 'free', expiresAt: null };
   };
 
-  const fetchServerBalance = async (token: string | null) => {
+  const fetchServerBalance = async (token: string | null): Promise<{ totalCoins: number; lifetimeEarnings: number; dailyCoinsEarned: number } | null> => {
     if (!token) {
       return { totalCoins: 0, lifetimeEarnings: 0, dailyCoinsEarned: 0 };
     }
@@ -208,16 +219,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         if (data && data.success) {
           return {
-            totalCoins: data.totalCoins || 0,
-            lifetimeEarnings: data.lifetimeEarnings || 0,
-            dailyCoinsEarned: data.dailyCoinsEarned || 0,
+            totalCoins: Number(data.totalCoins ?? 0),
+            lifetimeEarnings: Number(data.lifetimeEarnings ?? 0),
+            dailyCoinsEarned: Number(data.dailyCoinsEarned ?? 0),
           };
         }
       }
+      return null;
     } catch (err) {
-      console.warn('Failed to fetch server balance:', err);
+      console.warn('Failed to fetch server balance (transient error):', err);
+      return null;
     }
-    return { totalCoins: 0, lifetimeEarnings: 0, dailyCoinsEarned: 0 };
   };
 
   const createPioneerUser = useCallback((piUsername: string, piUid: string, initialCoins = 0, lifetimeCoins = 0, dailyCoinsEarned = 0): User => {
@@ -265,47 +277,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const authenticateWithPiSDK = useCallback(async () => {
-    setLoading(true);
-    setAuthStatus('initializing');
-    setAuthMessage('Detecting Pi Browser...');
-
-    // Check if running inside official Pi Browser app or Pi environment
-    const isPiBrowser = typeof window !== 'undefined' && (
-      navigator.userAgent.toLowerCase().includes('pibrowser') ||
-      Boolean(window.Pi)
-    );
-
-    console.log('[Pi Auth] Environment check:', {
-      isPiBrowser,
-      hasWindowPi: typeof window !== 'undefined' && Boolean(window.Pi),
-      hostname: typeof window !== 'undefined' ? window.location.hostname : 'SSR',
-    });
-
-    // If outside Pi Browser (e.g. AI Studio Preview, desktop, or regular browser):
-    // Provide an immediate, non-blocking Pioneer session so all channels, categories, and player render instantly.
-    if (!isPiBrowser) {
-      console.log('[Pi Auth] Outside Pi Browser - initializing instant Pioneer Live TV preview session.');
-      setIsDevPreview(true);
-      const devToken = 'dev_preview_token';
-      setPiAccessToken(devToken);
-      
-      const guestUid = 'pioneer_preview_123';
-      const guestUsername = 'Pioneer_Preview';
-      const defaultUser = createPioneerUser(guestUsername, guestUid, 150, 150, 25);
-      
-      setUser(defaultUser);
-      setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
-      setAuthStatus('authenticated');
-      setAuthMessage('Live TV Preview Mode');
-      updateAdminState(false);
-      setLoading(false);
+    // Prevent duplicate/concurrent in-flight authentication calls
+    if (authInProgressRef.current) {
+      console.log('[Pi Auth] Authentication is already in progress, skipping concurrent call.');
       return;
     }
 
+    authInProgressRef.current = true;
+    const currentRequestId = ++authRequestIdRef.current;
+
+    setLoading(true);
+    setAuthStatus('initializing');
+    setAuthMessage('Initializing Pi Network SDK...');
+
     try {
+      // Step 1: Conclusively await Pi SDK readiness before deciding browser environment
       const sdkLoaded = await loadPiSDKScript();
 
-      if (!sdkLoaded || typeof window.Pi === 'undefined') {
+      // Check if stale request before proceeding
+      if (currentRequestId !== authRequestIdRef.current) {
+        console.log('[Pi Auth] Discarding stale auth request ID:', currentRequestId);
+        return;
+      }
+
+      const hasPiObject = typeof window !== 'undefined' && Boolean(window.Pi);
+      const isPiBrowserUA = typeof window !== 'undefined' && navigator.userAgent.toLowerCase().includes('pibrowser');
+      const isPiEnvironment = hasPiObject || (sdkLoaded && Boolean(window.Pi)) || isPiBrowserUA;
+
+      console.log('[Pi Auth] Environment check:', {
+        sdkLoaded,
+        hasPiObject,
+        isPiBrowserUA,
+        isPiEnvironment,
+        hostname: typeof window !== 'undefined' ? window.location.hostname : 'SSR',
+      });
+
+      // If outside Pi environment and SDK is conclusively absent:
+      // Provide an immediate, non-blocking Pioneer preview session so external browsers render smoothly.
+      if (!isPiEnvironment && !sdkLoaded) {
+        const existingUser = userRef.current;
+        if (existingUser && existingUser.piUserId && !existingUser.piUserId.includes('preview')) {
+          console.log('[Pi Auth] Preserving active Pioneer session across environment check:', existingUser.piUsername);
+          setAuthStatus('authenticated');
+          setAuthMessage(`Connected as @${existingUser.piUsername}`);
+          return;
+        }
+
+        console.log('[Pi Auth] Outside Pi Browser - initializing instant Pioneer Live TV preview session.');
+        setIsDevPreview(true);
+        const devToken = 'dev_preview_token';
+        setPiAccessToken(devToken);
+        
+        const guestUid = 'pioneer_preview_123';
+        const guestUsername = 'Pioneer_Preview';
+        const defaultUser = createPioneerUser(guestUsername, guestUid, 150, 150, 25);
+        
+        setUser(defaultUser);
+        setPremiumStatus({ active: false, plan: 'free', expiresAt: null });
+        setAuthStatus('authenticated');
+        setAuthMessage('Live TV Preview Mode');
+        updateAdminState(false);
+        setLoading(false);
+        return;
+      }
+
+      if (typeof window.Pi === 'undefined') {
         const existingUser = userRef.current;
         if (!existingUser || !existingUser.piUserId) {
           setUser(null);
@@ -322,7 +358,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthMessage('Initializing Pi Network SDK v2.0...');
 
       try {
-        window.Pi.init({
+        // Treat Pi.init(...) as a Promise and await it fully before calling Pi.authenticate(...)
+        await window.Pi.init({
           version: '2.0',
           sandbox: PI_NETWORK_CONFIG.SANDBOX ?? false,
         });
@@ -361,7 +398,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
 
       console.log('[Pi Auth] Authenticating with window.Pi.authenticate...');
+      // Authenticate with the required 'username' and 'payments' scopes
       const authResult = await window.Pi.authenticate(['username', 'payments'], onIncompletePaymentFound);
+      
+      if (currentRequestId !== authRequestIdRef.current) {
+        console.log('[Pi Auth] Discarding stale authResult for request ID:', currentRequestId);
+        return;
+      }
+
       if (!authResult || !authResult.accessToken) {
         throw new Error('No access token returned from Pi authentication.');
       }
@@ -377,8 +421,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('[Pi Auth] Received authentic Pi Pioneer identity:', { uid: initialUid, username: initialUsername });
 
-      // Immediately establish the authentic Pioneer identity in state
-      const initialPioneer = createPioneerUser(initialUsername, initialUid, 0, 0, 0);
+      // Establish the authentic Pioneer identity in state, preserving current balance if already known
+      const existingUser = userRef.current;
+      const existingCoins = (existingUser && existingUser.piUserId === initialUid) ? existingUser.totalCoins : 0;
+      const existingLifetime = (existingUser && existingUser.piUserId === initialUid) ? existingUser.lifetimeEarnings : 0;
+      const existingDaily = (existingUser && existingUser.piUserId === initialUid) ? existingUser.dailyCoinsEarned : 0;
+
+      const initialPioneer = createPioneerUser(initialUsername, initialUid, existingCoins, existingLifetime, existingDaily);
       setUser(initialPioneer);
       setPiAccessToken(token);
       setIsDevPreview(false);
@@ -396,26 +445,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             fetchServerAdminStatus(token),
           ]);
 
+          // Guard against stale background resolutions
+          if (currentRequestId !== authRequestIdRef.current) {
+            console.log('[Pi Auth] Discarding stale background sync for request ID:', currentRequestId);
+            return;
+          }
+
           const finalUid = verifiedUser?.uid || initialUid;
           const finalUsername = verifiedUser?.username || initialUsername;
 
-          setUser((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  piUserId: finalUid,
-                  piUsername: finalUsername,
-                  totalCoins: serverBal.totalCoins,
-                  lifetimeEarnings: serverBal.lifetimeEarnings,
-                  dailyCoinsEarned: serverBal.dailyCoinsEarned,
-                  updatedAt: new Date().toISOString(),
-                }
-              : createPioneerUser(finalUsername, finalUid, serverBal.totalCoins, serverBal.lifetimeEarnings, serverBal.dailyCoinsEarned)
-          );
+          setUser((prev) => {
+            if (!prev) {
+              const coins = serverBal ? serverBal.totalCoins : existingCoins;
+              const life = serverBal ? serverBal.lifetimeEarnings : existingLifetime;
+              const daily = serverBal ? serverBal.dailyCoinsEarned : existingDaily;
+              return createPioneerUser(finalUsername, finalUid, coins, life, daily);
+            }
+            return {
+              ...prev,
+              piUserId: finalUid,
+              piUsername: finalUsername,
+              // Only overwrite balance if serverBal successfully returned (preserves known balance on error)
+              totalCoins: serverBal ? serverBal.totalCoins : prev.totalCoins,
+              lifetimeEarnings: serverBal ? serverBal.lifetimeEarnings : prev.lifetimeEarnings,
+              dailyCoinsEarned: serverBal ? serverBal.dailyCoinsEarned : prev.dailyCoinsEarned,
+              updatedAt: new Date().toISOString(),
+            };
+          });
 
-          setPremiumStatus(serverPrem);
-          updateAdminState(serverAdmin);
-          AdManager.setPremiumStatus(serverPrem.active);
+          if (serverPrem) {
+            setPremiumStatus(serverPrem);
+            AdManager.setPremiumStatus(serverPrem.active);
+          }
+
+          // Only update admin state if server returned an authoritative boolean (null = transient error, preserve existing state)
+          if (serverAdmin !== null) {
+            updateAdminState(serverAdmin);
+          }
+
           setAuthMessage(`Connected as @${finalUsername}`);
         } catch (syncErr) {
           console.warn('[Pi Auth] Background server balance sync note:', syncErr);
@@ -423,12 +490,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })();
     } catch (error: any) {
       const errMsg = error?.message || String(error);
-      const isTimedOut = errMsg.includes('timed out') || errMsg.includes('Messaging promise') || errMsg.includes('bridge') || errMsg.includes('network') || errMsg.includes('IPC');
       const isExplicitInvalidAuth = errMsg.includes('invalid_token') || errMsg.includes('revoked') || errMsg.includes('unauthorized') || errMsg.includes('expired');
       console.warn('[Pi Auth] Authentication error:', errMsg);
 
       const existingUser = userRef.current;
-      const hasActivePioneer = Boolean(existingUser && existingUser.piUserId);
+      const hasActivePioneer = Boolean(existingUser && existingUser.piUserId && !existingUser.piUserId.includes('preview'));
 
       // If an existing Pioneer session is already active and the error is transient/recoverable,
       // preserve the existing verified Pioneer identity so the user does NOT get dropped to Guest/Unauthenticated.
@@ -443,6 +509,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         AdManager.setPremiumStatus(false);
         setPiAccessToken(null);
         setIsDevPreview(false);
+        const isTimedOut = errMsg.includes('timed out') || errMsg.includes('Messaging promise') || errMsg.includes('bridge') || errMsg.includes('network') || errMsg.includes('IPC');
         if (isTimedOut) {
           setAuthStatus('pi-browser-required');
           setAuthMessage('Pi authentication timed out. Please tap Re-authenticate in Pi Browser.');
@@ -452,6 +519,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } finally {
+      authInProgressRef.current = false;
       setLoading(false);
     }
   }, [createPioneerUser, updateAdminState]);
@@ -480,8 +548,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAdminStatus = useCallback(async (): Promise<boolean> => {
     const admin = await fetchServerAdminStatus(piAccessToken);
-    updateAdminState(admin);
-    return admin;
+    if (admin !== null) {
+      updateAdminState(admin);
+      return admin;
+    }
+    // Transient error -> preserve currently verified admin status
+    return isAdminRef.current;
   }, [piAccessToken, updateAdminState]);
 
   const syncServerBalance = useCallback(
@@ -504,18 +576,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const serverBal = await fetchServerBalance(piAccessToken);
-        setUser((prev) =>
-          prev
-            ? {
-                ...prev,
-                totalCoins: serverBal.totalCoins,
-                dailyCoinsEarned: serverBal.dailyCoinsEarned,
-                lifetimeEarnings: serverBal.lifetimeEarnings,
-                updatedAt: new Date().toISOString(),
-              }
-            : null
-        );
-        console.log('[WatchPoints] server balance synced', serverBal);
+        if (serverBal !== null) {
+          setUser((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  totalCoins: serverBal.totalCoins,
+                  dailyCoinsEarned: serverBal.dailyCoinsEarned,
+                  lifetimeEarnings: serverBal.lifetimeEarnings,
+                  updatedAt: new Date().toISOString(),
+                }
+              : null
+          );
+          console.log('[WatchPoints] server balance synced', serverBal);
+        } else {
+          console.log('[WatchPoints] server balance fetch returned null (transient error), preserving existing balance.');
+        }
       } catch (err) {
         console.warn('Failed to sync server balance:', err);
       }
@@ -525,8 +601,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const syncPremiumStatus = useCallback(async () => {
     const prem = await fetchServerPremiumStatus(piAccessToken);
-    setPremiumStatus(prem);
-    AdManager.setPremiumStatus(prem.active);
+    if (prem !== null) {
+      setPremiumStatus(prem);
+      AdManager.setPremiumStatus(prem.active);
+    }
   }, [piAccessToken]);
 
   const updateUserCoins = useCallback((amount: number) => {
@@ -573,6 +651,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         authMessage,
         piAccessToken,
         isDevPreview,
+        signInWithPi: authenticateWithPiSDK,
         reauthenticate: authenticateWithPiSDK,
         updateUserCoins,
         syncServerBalance,
